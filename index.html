@@ -281,9 +281,37 @@
           </select>
         </div>
         <div class="table-wrap"><table id="readinessTable"><thead><tr>
-          <th>Days to Start</th><th>Project</th><th>Wing</th><th>Category</th><th>Scope of Work</th><th>Start Date</th><th>Est %</th><th>Contract %</th><th>Status</th>
+          <th>Days to Start</th><th>Project</th><th>Wing</th><th>Category</th><th>Scope of Work</th><th>Start Date</th><th>Est %</th><th>Contract %</th><th>Status</th><th></th>
         </tr></thead><tbody id="readinessBody"></tbody></table></div>
       </div>
+    </div>
+
+    <div class="card" id="readinessEditPanel" style="display:none;">
+      <h3>Update Item — <span id="editItemScope"></span></h3>
+      <div class="form-grid">
+        <div class="full">
+          <label>Estimation Checklist</label>
+          <div style="display:flex;gap:16px;font-size:13px;">
+            <label style="display:flex;align-items:center;gap:6px;font-family:'Inter',sans-serif;font-weight:400;text-transform:none;"><input type="checkbox" id="editQtyTakeoff"> Quantity Take-off</label>
+            <label style="display:flex;align-items:center;gap:6px;font-family:'Inter',sans-serif;font-weight:400;text-transform:none;"><input type="checkbox" id="editMaterialUpload"> Material Upload</label>
+            <label style="display:flex;align-items:center;gap:6px;font-family:'Inter',sans-serif;font-weight:400;text-transform:none;"><input type="checkbox" id="editLabourUpload"> Labour Upload</label>
+          </div>
+        </div>
+        <div><label>Estimation Marks (0–100)</label><input type="number" id="editEstMarks" min="0" max="100"></div>
+        <div></div>
+        <div class="full">
+          <label>Contracts Checklist</label>
+          <div style="display:flex;gap:16px;font-size:13px;">
+            <label style="display:flex;align-items:center;gap:6px;font-family:'Inter',sans-serif;font-weight:400;text-transform:none;"><input type="checkbox" id="editContractorFinal"> Contractor Finalization</label>
+            <label style="display:flex;align-items:center;gap:6px;font-family:'Inter',sans-serif;font-weight:400;text-transform:none;"><input type="checkbox" id="editLoi"> LOI</label>
+            <label style="display:flex;align-items:center;gap:6px;font-family:'Inter',sans-serif;font-weight:400;text-transform:none;"><input type="checkbox" id="editWoApproved"> Work Order Approved</label>
+          </div>
+        </div>
+        <div><label>Contract Marks (0–100)</label><input type="number" id="editContractMarks" min="0" max="100"></div>
+      </div>
+      <button class="submit-btn" id="saveReadinessEditBtn">Save Update</button>
+      <button class="signout" id="cancelReadinessEditBtn" style="margin-left:8px;">Cancel</button>
+      <div class="status-msg" id="readinessEditMsg"></div>
     </div>
 
     <div id="readinessFullView" style="display:none;">
@@ -1032,9 +1060,65 @@ function renderReadinessTable(){
 
   document.getElementById('readinessBody').innerHTML = displayRows.map(r=>{
     const daysLabel = r._days===null?'—':(r._days<0?Math.abs(r._days)+'d overdue':r._days+'d');
-    return '<tr><td class="mono">'+daysLabel+'</td><td>'+r.project+'</td><td>'+r.wing+'</td><td>'+(r.category||'—')+'</td><td>'+r.scope_of_work+'</td><td class="mono">'+(r.activity_start_date||'—')+'</td><td>'+Math.round(r.estimation_marks||0)+'%</td><td>'+Math.round(r.contract_marks||0)+'%</td><td>'+r._status+'</td></tr>';
-  }).join('') || '<tr><td colspan="9" style="text-align:center;color:#999;padding:16px;">No items match this filter 🎉</td></tr>';
+    const rid = readinessRowId(r);
+    return '<tr><td class="mono">'+daysLabel+'</td><td>'+r.project+'</td><td>'+r.wing+'</td><td>'+(r.category||'—')+'</td><td>'+r.scope_of_work+'</td><td class="mono">'+(r.activity_start_date||'—')+'</td><td>'+Math.round(r.estimation_marks||0)+'%</td><td>'+Math.round(r.contract_marks||0)+'%</td><td>'+r._status+'</td><td><button class="ghost-btn" data-rid="'+rid+'" onclick="openReadinessEdit(this)">Update</button></td></tr>';
+  }).join('') || '<tr><td colspan="10" style="text-align:center;color:#999;padding:16px;">No items match this filter 🎉</td></tr>';
 }
+
+// ---------- INLINE EDIT: update a readiness item's checklist/marks ----------
+function readinessRowId(r){ return (r.sheet||'')+'|||'+(r.item_no||''); }
+let currentEditRow = null;
+
+function openReadinessEdit(btn){
+  const rid = btn.dataset.rid;
+  const [sheet, itemNo] = rid.split('|||');
+  const r = (READINESS_RAW||[]).find(x => x.sheet===sheet && String(x.item_no)===itemNo);
+  if(!r){ alert('Could not find that item — try refreshing.'); return; }
+  currentEditRow = r;
+  document.getElementById('editItemScope').textContent = r.project+' / '+r.wing+' — '+r.scope_of_work;
+  document.getElementById('editQtyTakeoff').checked = !!r.qty_takeoff_done;
+  document.getElementById('editMaterialUpload').checked = !!r.material_upload_done;
+  document.getElementById('editLabourUpload').checked = !!r.labour_upload_done;
+  document.getElementById('editEstMarks').value = r.estimation_marks ?? '';
+  document.getElementById('editContractorFinal').checked = !!r.contractor_finalization_done;
+  document.getElementById('editLoi').checked = !!r.loi_done;
+  document.getElementById('editWoApproved').checked = !!r.work_order_approved;
+  document.getElementById('editContractMarks').value = r.contract_marks ?? '';
+  document.getElementById('readinessEditMsg').textContent = '';
+  document.getElementById('readinessEditPanel').style.display = 'block';
+  document.getElementById('readinessEditPanel').scrollIntoView({behavior:'smooth', block:'center'});
+}
+
+document.getElementById('cancelReadinessEditBtn').addEventListener('click', ()=>{
+  document.getElementById('readinessEditPanel').style.display = 'none';
+  currentEditRow = null;
+});
+
+document.getElementById('saveReadinessEditBtn').addEventListener('click', async ()=>{
+  if(!currentEditRow) return;
+  const msg = document.getElementById('readinessEditMsg');
+  const updates = {
+    qty_takeoff_done: document.getElementById('editQtyTakeoff').checked,
+    material_upload_done: document.getElementById('editMaterialUpload').checked,
+    labour_upload_done: document.getElementById('editLabourUpload').checked,
+    estimation_marks: document.getElementById('editEstMarks').value===''? '' : Number(document.getElementById('editEstMarks').value),
+    contractor_finalization_done: document.getElementById('editContractorFinal').checked,
+    loi_done: document.getElementById('editLoi').checked,
+    work_order_approved: document.getElementById('editWoApproved').checked,
+    contract_marks: document.getElementById('editContractMarks').value===''? '' : Number(document.getElementById('editContractMarks').value)
+  };
+  msg.innerHTML = '<span class="spinner-inline"></span> Saving…'; msg.className='status-msg';
+  try{
+    const res = await fetch(CBD_FEED_URL, { method:'POST', body: JSON.stringify({ action:'updateItem', sheet: currentEditRow.sheet, item_no: currentEditRow.item_no, updates }) });
+    const json = await res.json();
+    if(!json.ok) throw new Error(json.error||'Update failed');
+    Object.assign(currentEditRow, updates);
+    enrichReadinessRows();
+    msg.textContent = 'Saved — the sheet has been updated.'; msg.className='status-msg ok';
+    if(isUnrestrictedReadiness()) ccRenderAll(); else renderReadinessTable();
+    setTimeout(()=>{ document.getElementById('readinessEditPanel').style.display='none'; currentEditRow=null; }, 1200);
+  } catch(err){ msg.textContent = err.message; msg.className='status-msg err'; }
+});
 
 // ============== FULL COMMAND CENTER VIEW (HOD/CEO) ==============
 const STATUS_LABEL = {'Slipping':'Slipping / Overdue Start','Critical':'Critical ≤45d','Watch':'Watch ≤90d','On Track':'On Track','Ready':'Fully Ready','Unplanned':'Unplanned'};
