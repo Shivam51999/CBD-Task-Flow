@@ -204,6 +204,21 @@
     </div>
   </div>
 
+  <!-- PROJECT READINESS (all roles, scoped to their sites) -->
+  <div class="tab-panel" id="tab-readiness">
+    <div class="card">
+      <h3>Project Readiness — <span id="readinessScopeLabel">—</span></h3>
+      <p class="hint">Estimation & contracting readiness ahead of site activity start — pulled live from the CBD tracking sheet, the same data behind your original readiness dashboard.</p>
+      <div class="kpi-row" id="readinessKpis"></div>
+      <div class="filter-bar" id="readinessFilterBar" style="display:none;">
+        <select id="fReadinessProject"><option value="">All Projects</option></select>
+      </div>
+      <div class="table-wrap"><table id="readinessTable"><thead><tr>
+        <th>Days to Start</th><th>Project</th><th>Wing</th><th>Category</th><th>Scope of Work</th><th>Start Date</th><th>Est %</th><th>Contract %</th><th>Status</th>
+      </tr></thead><tbody id="readinessBody"></tbody></table></div>
+    </div>
+  </div>
+
   <!-- CEO-ONLY: PERFORMANCE & P&L -->
   <div class="tab-panel" id="tab-performance">
     <div class="card">
@@ -259,7 +274,8 @@
 
 <script>
 // ============== CONFIG ==============
-const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzjVEfLZMOxrylQoWnxJ4bDwP5fY8LhdgXgzLN9qXbQvlS-R4DzrR4vXu9tPuyVyajS/exec'; // paste your /exec URL here
+const APPS_SCRIPT_URL = 'YOUR_APPS_SCRIPT_WEB_APP_URL'; // paste your portal /exec URL here
+const CBD_FEED_URL = 'YOUR_CBD_TRACKER_FEED_URL'; // paste the CBD_Tracker_Feed_Code.gs /exec URL here (the readiness dashboard's data feed)
 const ALL_SITES_FALLBACK = ['MANGALAM MIDAS CITY','MARVEL','MIRAYA','MITHILA','SHYNI GOLD','NIYOSHI PARK','AIKYAM','MELIZMA','MOMENTO','MYRA','LIFEPARK','STARVIEW'];
 const TOKEN_KEY = 'mangalam_portal_token';
 const WELCOME_KEY = 'mangalam_portal_welcome_seen';
@@ -354,9 +370,9 @@ function inr(n){ return '₹'+Math.round(n||0).toLocaleString('en-IN'); }
 // ---------- TABS ----------
 function setupTabs(){
   const tabBar = document.getElementById('tabBar');
-  const managerTabs = [{id:'team',label:'Team Roster'},{id:'assign',label:'Assign Task'},{id:'alltasks',label:'All Tasks'},{id:'feed',label:'Activity Feed'}];
+  const managerTabs = [{id:'team',label:'Team Roster'},{id:'assign',label:'Assign Task'},{id:'alltasks',label:'All Tasks'},{id:'feed',label:'Activity Feed'},{id:'readiness',label:'Project Readiness'}];
   const ceoTabs = [{id:'overview',label:'Overview'}, ...managerTabs, {id:'performance',label:'Performance & P&L'}];
-  const memberTabs = [{id:'mytasks',label:'My Tasks'},{id:'log',label:'Daily Activity Log'},{id:'myperf',label:'My Performance'}];
+  const memberTabs = [{id:'mytasks',label:'My Tasks'},{id:'readiness',label:'Project Readiness'},{id:'log',label:'Daily Activity Log'},{id:'myperf',label:'My Performance'}];
   const tabs = ME.role==='CEO' ? ceoTabs : (ME.role==='HOD' ? managerTabs : memberTabs);
   tabBar.innerHTML = tabs.map((t,i)=>'<button class="tab-btn'+(i===0?' active':'')+'" data-tab="'+t.id+'">'+t.label+'</button>').join('');
   document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
@@ -366,6 +382,7 @@ function setupTabs(){
       tabBar.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
       document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
       btn.classList.add('active'); document.getElementById('tab-'+btn.dataset.tab).classList.add('active');
+      if(btn.dataset.tab === 'readiness') loadReadinessTab();
     });
   });
 }
@@ -660,6 +677,93 @@ async function renderMyPerformance(){
     ['Overall Score', s.score+'%', ''],['Tasks Done', s.tasksDone+'/'+s.tasksAssigned, ''],
     ['On-Time Rate', Math.round(s.onTimeRate*100)+'%', ''],['Activity Consistency', Math.round(s.consistency*100)+'%', '']
   ].map(([lbl,val,cls])=>'<div class="kpi"><div class="val '+cls+'">'+val+'</div><div class="lbl">'+lbl+'</div></div>').join('');
+}
+
+// ============== PROJECT READINESS (all roles) ==============
+let READINESS_RAW = null;
+
+function isUnrestrictedReadiness(){
+  return ME.role==='CEO' || ME.role==='HOD' || !(ME.sites && ME.sites.length);
+}
+
+async function loadReadinessTab(){
+  if(READINESS_RAW){ renderReadinessTable(); return; }
+  document.getElementById('readinessBody').innerHTML = '<tr><td colspan="9" style="text-align:center;padding:20px;color:#999;"><span class="spinner-inline"></span> Loading readiness data…</td></tr>';
+  try{
+    const res = await fetch(CBD_FEED_URL, { cache:'no-store' });
+    const json = await res.json();
+    READINESS_RAW = json.rows || [];
+    enrichReadinessRows();
+    setupReadinessScopeUI();
+    renderReadinessTable();
+  } catch(err){
+    document.getElementById('readinessBody').innerHTML = '<tr><td colspan="9" style="text-align:center;padding:20px;color:var(--red);">Could not load readiness data: '+err.message+'</td></tr>';
+  }
+}
+
+function enrichReadinessRows(){
+  const today = new Date(); today.setHours(0,0,0,0);
+  const parseDate = s => { if(!s) return null; const d=new Date(s+'T00:00:00'); return isNaN(d)?null:d; };
+  const daysBetween = (a,b) => Math.round((a-b)/86400000);
+  READINESS_RAW.forEach(r=>{
+    r._start = parseDate(r.activity_start_date);
+    const est = r.estimation_marks==null?0:r.estimation_marks;
+    const con = r.contract_marks==null?0:r.contract_marks;
+    r._readiness = (est+con)/2;
+    r._fullyReady = (r.estimation_marks===100 && r.contract_marks===100);
+    r._days = r._start ? daysBetween(r._start, today) : null;
+    if(!r._start) r._status='Unplanned';
+    else if(r._fullyReady) r._status='Ready';
+    else if(r._days<0) r._status='Slipping';
+    else if(r._days<=45) r._status='Critical';
+    else if(r._days<=90) r._status='Watch';
+    else r._status='On Track';
+  });
+}
+
+function setupReadinessScopeUI(){
+  const scopeLabel = document.getElementById('readinessScopeLabel');
+  const filterBar = document.getElementById('readinessFilterBar');
+  if(isUnrestrictedReadiness()){
+    scopeLabel.textContent = 'All Projects';
+    filterBar.style.display = 'flex';
+    const projects = [...new Set(READINESS_RAW.map(r=>r.project))].filter(Boolean).sort();
+    const sel = document.getElementById('fReadinessProject');
+    sel.innerHTML = '<option value="">All Projects</option>' + projects.map(p=>'<option>'+p+'</option>').join('');
+    sel.addEventListener('change', renderReadinessTable);
+  } else {
+    scopeLabel.textContent = (ME.sites||[]).join(', ') || 'No sites assigned';
+    filterBar.style.display = 'none';
+  }
+}
+
+function renderReadinessTable(){
+  let rows = READINESS_RAW || [];
+  if(isUnrestrictedReadiness()){
+    const fp = document.getElementById('fReadinessProject').value;
+    if(fp) rows = rows.filter(r=>r.project===fp);
+  } else {
+    rows = rows.filter(r=> (ME.sites||[]).includes(r.project));
+  }
+
+  const total = rows.length;
+  const ready = rows.filter(r=>r._status==='Ready').length;
+  const critical = rows.filter(r=>r._status==='Critical').length;
+  const slipping = rows.filter(r=>r._status==='Slipping').length;
+  document.getElementById('readinessKpis').innerHTML = [
+    ['Items in Scope', total, ''],
+    ['Fully Ready', ready, 'green'],
+    ['Critical ≤45d', critical, 'amber'],
+    ['Slipping', slipping, 'red']
+  ].map(([lbl,val,cls])=>'<div class="kpi"><div class="val '+cls+'">'+val+'</div><div class="lbl">'+lbl+'</div></div>').join('');
+
+  const risk = rows.filter(r=>r._status==='Slipping'||r._status==='Critical'||r._status==='Watch')
+    .sort((a,b)=>(a._days??9999)-(b._days??9999)).slice(0,150);
+
+  document.getElementById('readinessBody').innerHTML = risk.map(r=>{
+    const daysLabel = r._days===null?'—':(r._days<0?Math.abs(r._days)+'d overdue':r._days+'d');
+    return '<tr><td class="mono">'+daysLabel+'</td><td>'+r.project+'</td><td>'+r.wing+'</td><td>'+(r.category||'—')+'</td><td>'+r.scope_of_work+'</td><td class="mono">'+(r.activity_start_date||'—')+'</td><td>'+Math.round(r.estimation_marks||0)+'%</td><td>'+Math.round(r.contract_marks||0)+'%</td><td>'+r._status+'</td></tr>';
+  }).join('') || '<tr><td colspan="9" style="text-align:center;color:#999;padding:16px;">No at-risk items in scope 🎉</td></tr>';
 }
 </script>
 </body>
