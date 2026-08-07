@@ -288,8 +288,9 @@
 
     <div class="card" id="readinessEditPanel" style="display:none;">
       <h3>Update Item — <span id="editItemScope"></span></h3>
+      <p class="hint" id="editSubmitHint"></p>
       <div class="form-grid">
-        <div class="full">
+        <div class="full" id="editEstBlock">
           <label>Estimation Checklist</label>
           <div style="display:flex;gap:16px;font-size:13px;">
             <label style="display:flex;align-items:center;gap:6px;font-family:'Inter',sans-serif;font-weight:400;text-transform:none;"><input type="checkbox" id="editQtyTakeoff"> Quantity Take-off</label>
@@ -297,9 +298,9 @@
             <label style="display:flex;align-items:center;gap:6px;font-family:'Inter',sans-serif;font-weight:400;text-transform:none;"><input type="checkbox" id="editLabourUpload"> Labour Upload</label>
           </div>
         </div>
-        <div><label>Estimation Marks (0–100)</label><input type="number" id="editEstMarks" min="0" max="100"></div>
+        <div id="editEstMarksBlock"><label>Estimation Marks (auto-calculated)</label><input type="number" id="editEstMarks" min="0" max="100" readonly style="background:#F5F5F5;"></div>
         <div></div>
-        <div class="full">
+        <div class="full" id="editContractBlock">
           <label>Contracts Checklist</label>
           <div style="display:flex;gap:16px;font-size:13px;">
             <label style="display:flex;align-items:center;gap:6px;font-family:'Inter',sans-serif;font-weight:400;text-transform:none;"><input type="checkbox" id="editContractorFinal"> Contractor Finalization</label>
@@ -307,7 +308,7 @@
             <label style="display:flex;align-items:center;gap:6px;font-family:'Inter',sans-serif;font-weight:400;text-transform:none;"><input type="checkbox" id="editWoApproved"> Work Order Approved</label>
           </div>
         </div>
-        <div><label>Contract Marks (0–100)</label><input type="number" id="editContractMarks" min="0" max="100"></div>
+        <div id="editContractMarksBlock"><label>Contract Marks (auto-calculated)</label><input type="number" id="editContractMarks" min="0" max="100" readonly style="background:#F5F5F5;"></div>
       </div>
       <button class="submit-btn" id="saveReadinessEditBtn">Save Update</button>
       <button class="signout" id="cancelReadinessEditBtn" style="margin-left:8px;">Cancel</button>
@@ -409,6 +410,23 @@
     </div>
   </div>
 
+  <!-- READINESS APPROVALS (HOD/CEO) -->
+  <div class="tab-panel" id="tab-approvals">
+    <div class="card">
+      <h3>Readiness Updates Pending Approval</h3>
+      <p class="hint">Estimation & CBD staff submit checklist updates here for sign-off before they land in the tracker sheet. Approving applies the change immediately; rejecting discards it.</p>
+      <div class="table-wrap"><table id="approvalsTable"><thead><tr>
+        <th>Submitted</th><th>By</th><th>Project / Wing</th><th>Scope of Work</th><th>Proposed Change</th><th>Action</th>
+      </tr></thead><tbody id="approvalsBody"></tbody></table></div>
+    </div>
+    <div class="card">
+      <h3>Approval History</h3>
+      <div class="table-wrap" style="max-height:280px;"><table id="approvalsHistoryTable"><thead><tr>
+        <th>Submitted</th><th>By</th><th>Project / Wing</th><th>Decision</th><th>By</th><th>When</th>
+      </tr></thead><tbody id="approvalsHistoryBody"></tbody></table></div>
+    </div>
+  </div>
+
   <!-- CEO-ONLY: PERFORMANCE & P&L -->
   <div class="tab-panel" id="tab-performance">
     <div class="card">
@@ -416,7 +434,7 @@
       <p class="hint">Score = 40% completion rate + 30% on-time rate + 30% daily-activity consistency. Cost is prorated from Annual CTC. This tab and all figures on it are visible only to the CEO role — HOD cannot see this.</p>
       <div class="kpi-row" id="perfKpiRow"></div>
       <div class="table-wrap"><table id="perfTable"><thead><tr>
-        <th>Name</th><th>Role</th><th>Score</th><th>Completion</th><th>On-Time</th><th>Consistency</th><th>Annual CTC (₹)</th><th>Cost MTD (₹)</th><th>Value Delivered (₹)</th><th>Shortfall (₹)</th>
+        <th>Name</th><th>Role</th><th>Score</th><th>Completion</th><th>On-Time</th><th>Consistency</th><th>Readiness Approved</th><th>Annual CTC (₹)</th><th>Cost MTD (₹)</th><th>Value Delivered (₹)</th><th>Shortfall (₹)</th>
       </tr></thead><tbody id="perfBody"></tbody></table></div>
     </div>
   </div>
@@ -461,7 +479,7 @@
     <div class="card">
       <h3>My Performance Score</h3>
       <p class="hint">This is how your manager sees your delivery. No cost or salary figures are ever shown to you or anyone but the CEO.</p>
-      <div class="kpi-row" id="myPerfKpis"></div>
+      <div class="kpi-row" id="myPerfKpis" style="grid-template-columns:repeat(5,1fr);"></div>
     </div>
   </div>
 </div>
@@ -605,7 +623,7 @@ function inr(n){ return '₹'+Math.round(n||0).toLocaleString('en-IN'); }
 // ---------- TABS ----------
 function setupTabs(){
   const tabBar = document.getElementById('tabBar');
-  const managerTabs = [{id:'team',label:'Team Roster'},{id:'assign',label:'Assign Task'},{id:'alltasks',label:'All Tasks'},{id:'feed',label:'Activity Feed'},{id:'readiness',label:'Project Readiness'}];
+  const managerTabs = [{id:'team',label:'Team Roster'},{id:'assign',label:'Assign Task'},{id:'alltasks',label:'All Tasks'},{id:'feed',label:'Activity Feed'},{id:'readiness',label:'Project Readiness'},{id:'approvals',label:'Readiness Approvals'}];
   const ceoTabs = [{id:'overview',label:'Overview'}, ...managerTabs, {id:'performance',label:'Performance & P&L'}];
   const memberTabs = [{id:'mytasks',label:'My Tasks'},{id:'readiness',label:'Project Readiness'},{id:'log',label:'Daily Activity Log'},{id:'myperf',label:'My Performance'}];
   const tabs = ME.role==='CEO' ? ceoTabs : (ME.role==='HOD' ? managerTabs : memberTabs);
@@ -618,6 +636,7 @@ function setupTabs(){
       document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
       btn.classList.add('active'); document.getElementById('tab-'+btn.dataset.tab).classList.add('active');
       if(btn.dataset.tab === 'readiness') loadReadinessTab();
+      if(btn.dataset.tab === 'approvals') loadApprovalsTab();
     });
   });
 }
@@ -740,7 +759,16 @@ async function renderKPIsManager(){
 async function renderHOD(){ await renderManagerCommon(); await renderKPIsManager(); }
 
 // ============== CEO LOGIC ==============
-function computeScore(email, tasks, activity){
+function ccExtractMarks(proposedJson){
+  try{
+    const u = JSON.parse(proposedJson);
+    if('estimation_marks' in u) return u.estimation_marks;
+    if('contract_marks' in u) return u.contract_marks;
+  } catch(e){}
+  return null;
+}
+
+function computeScore(email, tasks, activity, approvals){
   const todayStr = new Date().toISOString().slice(0,10);
   const monthStart = todayStr.slice(0,8)+'01';
   const myTasks = tasks.filter(t=>t.AssignedToEmail===email);
@@ -752,8 +780,21 @@ function computeScore(email, tasks, activity){
   const myActivity = activity.filter(a=>a.Email===email && String(a.Date)>=monthStart);
   const distinctDays = new Set(myActivity.map(a=>String(a.Date))).size;
   const consistency = Math.min(1, distinctDays/Math.max(1,daysElapsed));
-  const score = Math.round(100*(0.4*completionRate + 0.3*onTimeRate + 0.3*consistency));
-  return { score, completionRate, onTimeRate, consistency, tasksAssigned: myTasks.length, tasksDone: doneTasks.length, daysElapsed };
+
+  approvals = approvals || [];
+  const myApproved = approvals.filter(a => a.SubmittedByEmail===email && a.Status==='Approved' && String(a.SubmittedAt).slice(0,10)>=monthStart);
+  const marksValues = myApproved.map(a=>ccExtractMarks(a.ProposedUpdates)).filter(v=>v!==null && v!==undefined);
+  const readinessScore = marksValues.length ? (marksValues.reduce((a,b)=>a+b,0)/marksValues.length)/100 : null;
+
+  const W = { completion:0.3, onTime:0.2, consistency:0.2, readiness:0.3 };
+  let score;
+  if(readinessScore===null){
+    const totalOther = W.completion+W.onTime+W.consistency; // redistribute readiness weight — no approved submissions yet this month
+    score = Math.round(100*(W.completion/totalOther*completionRate + W.onTime/totalOther*onTimeRate + W.consistency/totalOther*consistency));
+  } else {
+    score = Math.round(100*(W.completion*completionRate + W.onTime*onTimeRate + W.consistency*consistency + W.readiness*readinessScore));
+  }
+  return { score, completionRate, onTimeRate, consistency, readinessScore, readinessApprovedCount: marksValues.length, tasksAssigned: myTasks.length, tasksDone: doneTasks.length, daysElapsed };
 }
 
 async function renderCEO(){
@@ -764,10 +805,15 @@ async function renderCEO(){
   await renderPerformanceCEO();
 }
 
-let ALL_FEED_CACHE = null, COMP_CACHE = null;
+let ALL_FEED_CACHE = null, COMP_CACHE = null, SCORE_APPROVALS_CACHE = null;
 async function preloadSharedCEOData(){
   ALL_FEED_CACHE = await api('getAllFeed', {});
   COMP_CACHE = await api('getCompensation', {});
+  try{
+    const res = await fetch(CBD_FEED_URL, { method:'POST', body: JSON.stringify({ action:'getApprovalLog' }) });
+    const json = await res.json();
+    SCORE_APPROVALS_CACHE = json.ok ? json.data : [];
+  } catch(e){ SCORE_APPROVALS_CACHE = []; }
 }
 
 async function renderOverview(){
@@ -780,7 +826,7 @@ async function renderOverview(){
   let scoreSum=0, totalCost=0, totalShortfall=0;
   const deptStats = {};
   staff.forEach(m=>{
-    const s = computeScore(m.email, tasks, activity);
+    const s = computeScore(m.email, tasks, activity, SCORE_APPROVALS_CACHE);
     scoreSum += s.score;
     const ctc = compMap[m.email];
     let cost=0, shortfall=0;
@@ -814,7 +860,7 @@ async function renderPerformanceCEO(){
   let totalCost=0, totalValue=0, totalShortfall=0, scoreSum=0, scoreCount=0;
   const staff = ALL_MEMBERS.filter(m=>m.role==='Estimation'||m.role==='CBD');
   const rows = staff.map(m=>{
-    const s = computeScore(m.email, tasks, activity);
+    const s = computeScore(m.email, tasks, activity, SCORE_APPROVALS_CACHE);
     const ctc = compMap[m.email] || null;
     let costMtd=null, valueDelivered=null, shortfall=null;
     if(ctc){ costMtd=(ctc/365)*s.daysElapsed; valueDelivered=costMtd*(s.score/100); shortfall=costMtd-valueDelivered; totalCost+=costMtd; totalValue+=valueDelivered; totalShortfall+=shortfall; }
@@ -825,11 +871,12 @@ async function renderPerformanceCEO(){
   document.getElementById('perfBody').innerHTML = rows.map(r=>
     '<tr><td>'+r.m.name+'</td><td>'+r.m.role+'</td><td>'+scoreBar(r.s.score)+'</td>'+
     '<td>'+r.s.tasksDone+'/'+r.s.tasksAssigned+'</td><td>'+Math.round(r.s.onTimeRate*100)+'%</td><td>'+Math.round(r.s.consistency*100)+'%</td>'+
+    '<td>'+(r.s.readinessScore!==null ? r.s.readinessApprovedCount+' items, avg '+Math.round(r.s.readinessScore*100)+'%' : '— none yet')+'</td>'+
     '<td><input type="number" class="ctc-input mono" data-email="'+r.m.email+'" value="'+(r.ctc||'')+'" placeholder="Set CTC"></td>'+
     '<td class="mono">'+(r.costMtd!==null?inr(r.costMtd):'—')+'</td>'+
     '<td class="mono">'+(r.valueDelivered!==null?inr(r.valueDelivered):'—')+'</td>'+
     '<td class="mono" style="color:'+(r.shortfall>0?'var(--red)':'var(--green)')+'">'+(r.shortfall!==null?inr(r.shortfall):'—')+'</td></tr>'
-  ).join('') || '<tr><td colspan="10" style="text-align:center;color:#999;padding:16px;">No staff yet</td></tr>';
+  ).join('') || '<tr><td colspan="11" style="text-align:center;color:#999;padding:16px;">No staff yet</td></tr>';
 
   document.querySelectorAll('.ctc-input').forEach(inp=>{
     inp.addEventListener('change', async ()=>{
@@ -935,10 +982,17 @@ async function renderMyFeed(){
 async function renderMyPerformance(){
   const tasks = await api('getMyTasks', {});
   const activity = await api('getMyFeed', {});
-  const s = computeScore(ME.email, tasks, activity);
+  let approvals = [];
+  try{
+    const res = await fetch(CBD_FEED_URL, { method:'POST', body: JSON.stringify({ action:'getApprovalLog' }) });
+    const json = await res.json();
+    if(json.ok) approvals = json.data;
+  } catch(e){}
+  const s = computeScore(ME.email, tasks, activity, approvals);
   document.getElementById('myPerfKpis').innerHTML = [
     ['Overall Score', s.score+'%', ''],['Tasks Done', s.tasksDone+'/'+s.tasksAssigned, ''],
-    ['On-Time Rate', Math.round(s.onTimeRate*100)+'%', ''],['Activity Consistency', Math.round(s.consistency*100)+'%', '']
+    ['On-Time Rate', Math.round(s.onTimeRate*100)+'%', ''],['Activity Consistency', Math.round(s.consistency*100)+'%', ''],
+    ['Readiness Items Approved', s.readinessScore!==null ? s.readinessApprovedCount+' (avg '+Math.round(s.readinessScore*100)+'%)' : 'None yet this month', '']
   ].map(([lbl,val,cls])=>'<div class="kpi"><div class="val '+cls+'">'+val+'</div><div class="lbl">'+lbl+'</div></div>').join('');
 }
 
@@ -1069,21 +1123,45 @@ function renderReadinessTable(){
 function readinessRowId(r){ return (r.sheet||'')+'|||'+(r.item_no||''); }
 let currentEditRow = null;
 
+function ccChecklistMarks(checkboxIds){
+  const checked = checkboxIds.filter(id => document.getElementById(id).checked).length;
+  return Math.round((checked/checkboxIds.length)*100);
+}
+
 function openReadinessEdit(btn){
   const rid = btn.dataset.rid;
   const [sheet, itemNo] = rid.split('|||');
   const r = (READINESS_RAW||[]).find(x => x.sheet===sheet && String(x.item_no)===itemNo);
   if(!r){ alert('Could not find that item — try refreshing.'); return; }
   currentEditRow = r;
+
+  const canManage = isUnrestrictedReadiness(); // HOD/CEO
+  const showEst = canManage || ME.role==='Estimation';
+  const showContract = canManage || ME.role==='CBD';
+  document.getElementById('editEstBlock').style.display = showEst ? 'block' : 'none';
+  document.getElementById('editEstMarksBlock').style.display = showEst ? 'block' : 'none';
+  document.getElementById('editContractBlock').style.display = showContract ? 'block' : 'none';
+  document.getElementById('editContractMarksBlock').style.display = showContract ? 'block' : 'none';
+
   document.getElementById('editItemScope').textContent = r.project+' / '+r.wing+' — '+r.scope_of_work;
   document.getElementById('editQtyTakeoff').checked = !!r.qty_takeoff_done;
   document.getElementById('editMaterialUpload').checked = !!r.material_upload_done;
   document.getElementById('editLabourUpload').checked = !!r.labour_upload_done;
-  document.getElementById('editEstMarks').value = r.estimation_marks ?? '';
+  document.getElementById('editEstMarks').value = r.estimation_marks ?? 0;
   document.getElementById('editContractorFinal').checked = !!r.contractor_finalization_done;
   document.getElementById('editLoi').checked = !!r.loi_done;
   document.getElementById('editWoApproved').checked = !!r.work_order_approved;
-  document.getElementById('editContractMarks').value = r.contract_marks ?? '';
+  document.getElementById('editContractMarks').value = r.contract_marks ?? 0;
+
+  const recalcEst = () => { document.getElementById('editEstMarks').value = ccChecklistMarks(['editQtyTakeoff','editMaterialUpload','editLabourUpload']); };
+  const recalcContract = () => { document.getElementById('editContractMarks').value = ccChecklistMarks(['editContractorFinal','editLoi','editWoApproved']); };
+  ['editQtyTakeoff','editMaterialUpload','editLabourUpload'].forEach(id => document.getElementById(id).onchange = recalcEst);
+  ['editContractorFinal','editLoi','editWoApproved'].forEach(id => document.getElementById(id).onchange = recalcContract);
+
+  document.getElementById('editSubmitHint').textContent = canManage
+    ? 'As ' + ME.role + ', your update saves immediately to the tracker sheet.'
+    : 'Your update will be sent to your HOD for approval — it won\'t change the sheet until approved.';
+
   document.getElementById('readinessEditMsg').textContent = '';
   document.getElementById('readinessEditPanel').style.display = 'block';
   document.getElementById('readinessEditPanel').scrollIntoView({behavior:'smooth', block:'center'});
@@ -1097,30 +1175,101 @@ document.getElementById('cancelReadinessEditBtn').addEventListener('click', ()=>
 document.getElementById('saveReadinessEditBtn').addEventListener('click', async ()=>{
   if(!currentEditRow) return;
   const msg = document.getElementById('readinessEditMsg');
-  const updates = {
-    qty_takeoff_done: document.getElementById('editQtyTakeoff').checked,
-    material_upload_done: document.getElementById('editMaterialUpload').checked,
-    labour_upload_done: document.getElementById('editLabourUpload').checked,
-    estimation_marks: document.getElementById('editEstMarks').value===''? '' : Number(document.getElementById('editEstMarks').value),
-    contractor_finalization_done: document.getElementById('editContractorFinal').checked,
-    loi_done: document.getElementById('editLoi').checked,
-    work_order_approved: document.getElementById('editWoApproved').checked,
-    contract_marks: document.getElementById('editContractMarks').value===''? '' : Number(document.getElementById('editContractMarks').value)
-  };
+  const canManage = isUnrestrictedReadiness();
+  const showEst = canManage || ME.role==='Estimation';
+  const showContract = canManage || ME.role==='CBD';
+
+  const updates = {};
+  if(showEst){
+    updates.qty_takeoff_done = document.getElementById('editQtyTakeoff').checked;
+    updates.material_upload_done = document.getElementById('editMaterialUpload').checked;
+    updates.labour_upload_done = document.getElementById('editLabourUpload').checked;
+    updates.estimation_marks = Number(document.getElementById('editEstMarks').value)||0;
+  }
+  if(showContract){
+    updates.contractor_finalization_done = document.getElementById('editContractorFinal').checked;
+    updates.loi_done = document.getElementById('editLoi').checked;
+    updates.work_order_approved = document.getElementById('editWoApproved').checked;
+    updates.contract_marks = Number(document.getElementById('editContractMarks').value)||0;
+  }
+
   msg.innerHTML = '<span class="spinner-inline"></span> Saving…'; msg.className='status-msg';
   try{
-    const res = await fetch(CBD_FEED_URL, { method:'POST', body: JSON.stringify({ action:'updateItem', sheet: currentEditRow.sheet, item_no: currentEditRow.item_no, updates }) });
-    const json = await res.json();
-    if(!json.ok) throw new Error(json.error||'Update failed');
-    Object.assign(currentEditRow, updates);
-    enrichReadinessRows();
-    msg.textContent = 'Saved — the sheet has been updated.'; msg.className='status-msg ok';
+    if(canManage){
+      const res = await fetch(CBD_FEED_URL, { method:'POST', body: JSON.stringify({ action:'updateItem', sheet: currentEditRow.sheet, item_no: currentEditRow.item_no, updates }) });
+      const json = await res.json();
+      if(!json.ok) throw new Error(json.error||'Update failed');
+      Object.assign(currentEditRow, updates);
+      enrichReadinessRows();
+      msg.textContent = 'Saved — the sheet has been updated.'; msg.className='status-msg ok';
+    } else {
+      const res = await fetch(CBD_FEED_URL, { method:'POST', body: JSON.stringify({
+        action:'submitReadinessUpdate', sheet: currentEditRow.sheet, item_no: currentEditRow.item_no,
+        project: currentEditRow.project, wing: currentEditRow.wing, scope_of_work: currentEditRow.scope_of_work,
+        updates, submittedByEmail: ME.email, submittedByName: ME.name
+      })});
+      const json = await res.json();
+      if(!json.ok) throw new Error(json.error||'Submit failed');
+      msg.textContent = 'Submitted — waiting on HOD approval.'; msg.className='status-msg ok';
+    }
     if(isUnrestrictedReadiness()) ccRenderAll(); else renderReadinessTable();
-    setTimeout(()=>{ document.getElementById('readinessEditPanel').style.display='none'; currentEditRow=null; }, 1200);
+    setTimeout(()=>{ document.getElementById('readinessEditPanel').style.display='none'; currentEditRow=null; }, 1400);
   } catch(err){ msg.textContent = err.message; msg.className='status-msg err'; }
 });
 
-// ============== FULL COMMAND CENTER VIEW (HOD/CEO) ==============
+// ============== READINESS APPROVALS (HOD/CEO) ==============
+let APPROVALS_CACHE = null;
+
+async function loadApprovalsTab(){
+  document.getElementById('approvalsBody').innerHTML = '<tr><td colspan="6" style="text-align:center;padding:20px;color:#999;"><span class="spinner-inline"></span> Loading…</td></tr>';
+  try{
+    const res = await fetch(CBD_FEED_URL, { method:'POST', body: JSON.stringify({ action:'getApprovalLog' }) });
+    const json = await res.json();
+    if(!json.ok) throw new Error(json.error||'Could not load approvals');
+    APPROVALS_CACHE = json.data || [];
+    renderApprovalsQueue();
+  } catch(err){
+    document.getElementById('approvalsBody').innerHTML = '<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--red);">'+err.message+'</td></tr>';
+  }
+}
+
+function ccFmtProposedChange(proposedJson){
+  try{
+    const u = JSON.parse(proposedJson);
+    const parts = [];
+    if('estimation_marks' in u) parts.push('Est → '+u.estimation_marks+'%');
+    if('contract_marks' in u) parts.push('Contract → '+u.contract_marks+'%');
+    return parts.join(', ') || '—';
+  } catch(e){ return '—'; }
+}
+
+function renderApprovalsQueue(){
+  const pending = (APPROVALS_CACHE||[]).filter(r=>r.Status==='Pending');
+  document.getElementById('approvalsBody').innerHTML = pending.map(r=>
+    '<tr><td class="mono">'+new Date(r.SubmittedAt).toLocaleString()+'</td><td>'+r.SubmittedByName+'</td><td>'+r.Project+' / '+r.Wing+'</td><td>'+r.ScopeOfWork+'</td><td>'+ccFmtProposedChange(r.ProposedUpdates)+'</td>'+
+    '<td><button class="ghost-btn" data-id="'+r.ID+'" data-act="approve">Approve</button> <button class="ghost-btn" data-id="'+r.ID+'" data-act="reject" style="color:var(--red);">Reject</button></td></tr>'
+  ).join('') || '<tr><td colspan="6" style="text-align:center;color:#999;padding:16px;">No updates waiting on approval 🎉</td></tr>';
+
+  document.querySelectorAll('#approvalsBody button').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      const action = btn.dataset.act==='approve' ? 'approveReadinessUpdate' : 'rejectReadinessUpdate';
+      btn.disabled = true;
+      try{
+        const res = await fetch(CBD_FEED_URL, { method:'POST', body: JSON.stringify({ action, id: btn.dataset.id, approverEmail: ME.email }) });
+        const json = await res.json();
+        if(!json.ok) throw new Error(json.error||'Action failed');
+        READINESS_RAW = null; // force refetch since sheet may have changed
+        await loadApprovalsTab();
+      } catch(err){ alert(err.message); btn.disabled = false; }
+    });
+  });
+
+  const decided = (APPROVALS_CACHE||[]).filter(r=>r.Status!=='Pending').sort((a,b)=> new Date(b.ApprovedAt||b.SubmittedAt) - new Date(a.ApprovedAt||a.SubmittedAt));
+  document.getElementById('approvalsHistoryBody').innerHTML = decided.slice(0,100).map(r=>
+    '<tr><td class="mono">'+new Date(r.SubmittedAt).toLocaleDateString()+'</td><td>'+r.SubmittedByName+'</td><td>'+r.Project+' / '+r.Wing+'</td>'+
+    '<td><span class="tag '+(r.Status==='Approved'?'tag-done':'tag-slip')+'">'+r.Status+'</span></td><td>'+(r.ApprovedByEmail||'—')+'</td><td class="mono">'+(r.ApprovedAt? new Date(r.ApprovedAt).toLocaleDateString():'—')+'</td></tr>'
+  ).join('') || '<tr><td colspan="6" style="text-align:center;color:#999;padding:16px;">No decisions yet</td></tr>';
+}
 const STATUS_LABEL = {'Slipping':'Slipping / Overdue Start','Critical':'Critical ≤45d','Watch':'Watch ≤90d','On Track':'On Track','Ready':'Fully Ready','Unplanned':'Unplanned'};
 const STATUS_CLASS = {'Slipping':'tag-slip','Critical':'tag-critical','Watch':'tag-watch','On Track':'tag-ontrack','Ready':'tag-ready','Unplanned':'tag-unplanned'};
 let ccGaugeChartInstance, ccProjectBarChartInstance, ccTimelineChartInstance, ccCategoryChartInstance, ccWeakestChartInstance;
