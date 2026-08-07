@@ -33,8 +33,15 @@
   .login-msg.ok{color:var(--green);} .login-msg.err{color:var(--red);}
 
   #appShell{display:none;padding:24px 30px 60px;max-width:1350px;margin:0 auto;}
-  #welcomeBanner{border-color:var(--red);}
-  #welcomeBanner p{font-size:13px;line-height:1.6;margin:0 0 10px;}
+
+  #greetingScreen{
+    position:fixed;inset:0;z-index:9999;background:var(--bg);
+    display:none;align-items:center;justify-content:center;flex-direction:column;
+    gap:14px;text-align:center;padding:30px;
+  }
+  #greetingScreen h1{font-size:32px;color:var(--charcoal-deep);}
+  .greeting-quote{font-size:16px;color:var(--ink);max-width:420px;line-height:1.5;font-family:'Poppins',sans-serif;font-weight:500;}
+  .greeting-dedication{font-size:13.5px;color:var(--red);background:var(--red-soft);padding:8px 16px;border-radius:20px;max-width:420px;}
   .topbar{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:16px;margin-bottom:20px;flex-wrap:wrap;gap:12px;}
   .topbar .title{font-size:26px;color:var(--charcoal-deep);}
   .topbar .eyebrow{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-soft);font-weight:600;}
@@ -106,13 +113,15 @@
   </div>
 </div>
 
-<div id="appShell">
-  <div class="card" id="welcomeBanner" style="display:none;">
-    <h3 style="margin-bottom:8px;">👋 Welcome</h3>
-    <p id="welcomeText"></p>
-    <button class="submit-btn" id="dismissWelcomeBtn" style="width:auto;">Got it</button>
-  </div>
+<div id="greetingScreen">
+  <span class="brand-dot"></span>
+  <h1 id="greetingTitle">Mangalam Namaste!</h1>
+  <p id="greetingQuote" class="greeting-quote"></p>
+  <p id="greetingDedication" class="greeting-dedication" style="display:none;"></p>
+  <button class="submit-btn" id="greetingContinueBtn" style="width:auto;">Continue →</button>
+</div>
 
+<div id="appShell">
   <div class="topbar">
     <div>
       <div class="eyebrow">Mangalam Landmarks LLP</div>
@@ -120,7 +129,7 @@
     </div>
     <div class="who">
       <span id="whoName">—</span><span class="role-pill" id="whoRole">—</span>
-      <button class="signout" id="helpBtn">? Help</button>
+      <button class="signout" id="greetBtn">✨</button>
       <button class="signout" id="signOutBtn">Sign out</button>
     </div>
   </div>
@@ -274,11 +283,10 @@
 
 <script>
 // ============== CONFIG ==============
-const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzjVEfLZMOxrylQoWnxJ4bDwP5fY8LhdgXgzLN9qXbQvlS-R4DzrR4vXu9tPuyVyajS/exec'; // paste your portal /exec URL here
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwUjm2KBbPI2iRQ3aO8Og2AFh2qOZJFAAx91ak4Jw6JO-j6tZqlu7PQJoBU5niniN-j/exec'; // paste your portal /exec URL here
 const CBD_FEED_URL = 'https://script.google.com/macros/s/AKfycbwUjm2KBbPI2iRQ3aO8Og2AFh2qOZJFAAx91ak4Jw6JO-j6tZqlu7PQJoBU5niniN-j/exec'; // paste the CBD_Tracker_Feed_Code.gs /exec URL here (the readiness dashboard's data feed)
 const ALL_SITES_FALLBACK = ['MANGALAM MIDAS CITY','MARVEL','MIRAYA','MITHILA','SHYNI GOLD','NIYOSHI PARK','AIKYAM','MELIZMA','MOMENTO','MYRA','LIFEPARK','STARVIEW'];
 const TOKEN_KEY = 'mangalam_portal_token';
-const WELCOME_KEY = 'mangalam_portal_welcome_seen';
 
 let TOKEN = null, ME = null, ALL_MEMBERS = [], ALL_SITES = ALL_SITES_FALLBACK;
 
@@ -329,26 +337,56 @@ async function startApp(profile){
   document.getElementById('appShell').style.display='block';
   document.getElementById('whoName').textContent = ME.name;
   document.getElementById('whoRole').textContent = ME.role;
-  setupWelcome(); setupTabs();
+  setupTabs();
   if(ME.role==='CEO') await renderCEO();
   else if(ME.role==='HOD') await renderHOD();
   else await renderMember();
+  showGreeting();
 }
 
-function setupWelcome(){
-  const banner = document.getElementById('welcomeBanner'); const text = document.getElementById('welcomeText');
-  if(ME.role==='CEO'){
-    text.innerHTML = "You're logged in as CEO. <b>Organization Overview</b> gives you the top-level picture. <b>Performance & P&L</b> is visible only to you — it's where Annual CTC lives and where cost-vs-delivery is tracked. You also have full HOD capabilities (roster, task assignment, approvals).";
-  } else if(ME.role==='HOD'){
-    text.innerHTML = "You're logged in as HOD. <b>Assign Task</b> to hand out work. When someone marks a task <b>Pending Review</b>, check <b>All Tasks</b> (highlighted amber) and set it to <b>Done</b> to approve. You do not have access to compensation or P&L data — that's CEO-only.";
-  } else {
-    text.innerHTML = "You're logged in as " + ME.role + ". Check <b>My Tasks</b> for anything assigned to you — mark it <b>Pending Review</b> when finished. Use <b>Daily Activity Log</b> every day. <b>My Performance</b> shows your own score — no cost figures are ever shown to you.";
-  }
-  let seen=false; try{ seen = localStorage.getItem(WELCOME_KEY)==='1'; }catch(e){}
-  if(!seen) banner.style.display='block';
-  document.getElementById('dismissWelcomeBtn').addEventListener('click', ()=>{ banner.style.display='none'; try{localStorage.setItem(WELCOME_KEY,'1');}catch(e){} });
-  document.getElementById('helpBtn').addEventListener('click', ()=>{ banner.style.display = banner.style.display==='none' ? 'block':'none'; });
+const QUOTES = [
+  "You are looking absolutely brilliant today.",
+  "Today is your day — go build something great.",
+  "Every landmark starts with someone showing up. That's you, today.",
+  "Small steps today, big skylines tomorrow.",
+  "Your work quietly moves mountains — keep at it.",
+  "The best view comes after the hardest climb. Keep climbing.",
+  "Today, be the reason someone's project moves forward.",
+  "Sharp mind, steady hands — exactly what today needs.",
+  "One good day of work compounds into a great career. This is one of them.",
+  "You showed up. That's already half the job done."
+];
+
+function getGreetingContent(){
+  const now = new Date();
+  const mins = now.getHours()*60 + now.getMinutes();
+  const early = mins < (9*60+45);   // before 9:45 AM
+  const late = mins >= (18*60+45);  // after 6:45 PM
+  const quote = QUOTES[Math.floor(Math.random()*QUOTES.length)];
+  let dedication = null;
+  if(early) dedication = "Logging in before 9:45 AM already? That's real dedication. 🌅";
+  else if(late) dedication = "Still here after 6:45 PM — that's what building landmarks takes. 🌙";
+  return { quote, dedication };
 }
+
+let greetingTimer = null;
+function showGreeting(){
+  const g = getGreetingContent();
+  const firstName = (ME.name||'').split(' ')[0];
+  document.getElementById('greetingTitle').textContent = 'Mangalam Namaste, ' + firstName + '!';
+  document.getElementById('greetingQuote').textContent = g.quote;
+  const dEl = document.getElementById('greetingDedication');
+  if(g.dedication){ dEl.textContent = g.dedication; dEl.style.display='block'; } else { dEl.style.display='none'; }
+  document.getElementById('greetingScreen').style.display='flex';
+  clearTimeout(greetingTimer);
+  greetingTimer = setTimeout(hideGreeting, 4000);
+}
+function hideGreeting(){
+  clearTimeout(greetingTimer);
+  document.getElementById('greetingScreen').style.display='none';
+}
+document.getElementById('greetingContinueBtn').addEventListener('click', hideGreeting);
+document.getElementById('greetBtn').addEventListener('click', showGreeting);
 
 function siteChips(id, preselected=[]){
   const c = document.getElementById(id); c.innerHTML='';
@@ -519,15 +557,22 @@ function computeScore(email, tasks, activity){
 
 async function renderCEO(){
   await renderManagerCommon();
+  await preloadSharedCEOData();
   await renderOverview();
   await renderKPIsManager();
   await renderPerformanceCEO();
 }
 
+let ALL_FEED_CACHE = null, COMP_CACHE = null;
+async function preloadSharedCEOData(){
+  ALL_FEED_CACHE = await api('getAllFeed', {});
+  COMP_CACHE = await api('getCompensation', {});
+}
+
 async function renderOverview(){
   const tasks = ALL_TASKS_CACHE.length ? ALL_TASKS_CACHE : await api('getAllTasks', {});
-  const activity = await api('getAllFeed', {});
-  const comp = await api('getCompensation', {});
+  const activity = ALL_FEED_CACHE || (ALL_FEED_CACHE = await api('getAllFeed', {}));
+  const comp = COMP_CACHE || (COMP_CACHE = await api('getCompensation', {}));
   const compMap = {}; (comp||[]).forEach(c=> compMap[c.Email]=c.AnnualCTC);
   const staff = ALL_MEMBERS.filter(m=>m.role==='Estimation'||m.role==='CBD');
 
@@ -561,8 +606,8 @@ async function renderOverview(){
 
 async function renderPerformanceCEO(){
   const tasks = ALL_TASKS_CACHE.length ? ALL_TASKS_CACHE : await api('getAllTasks', {});
-  const activity = await api('getAllFeed', {});
-  const comp = await api('getCompensation', {});
+  const activity = ALL_FEED_CACHE || (ALL_FEED_CACHE = await api('getAllFeed', {}));
+  const comp = COMP_CACHE || (COMP_CACHE = await api('getCompensation', {}));
   const compMap = {}; (comp||[]).forEach(c=> compMap[c.Email]=c.AnnualCTC);
 
   let totalCost=0, totalValue=0, totalShortfall=0, scoreSum=0, scoreCount=0;
@@ -589,7 +634,7 @@ async function renderPerformanceCEO(){
     inp.addEventListener('change', async ()=>{
       const val = parseFloat(inp.value);
       if(isNaN(val)||val<=0) return;
-      try{ await api('setCompensation', { email: inp.dataset.email, annualCtc: val }); await renderPerformanceCEO(); await renderOverview(); }
+      try{ await api('setCompensation', { email: inp.dataset.email, annualCtc: val }); COMP_CACHE = null; await renderPerformanceCEO(); await renderOverview(); }
       catch(err){ alert(err.message); }
     });
   });
