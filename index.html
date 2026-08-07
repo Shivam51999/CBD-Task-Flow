@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Mangalam Portal — CBD & Estimation</title>
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style>
   :root{
     --bg:#FAFAFA; --paper:#FFFFFF; --ink:#231F20; --ink-soft:#8C8C8D;
@@ -102,6 +103,37 @@
   .ctc-input{width:120px;}
   .spinner-inline{display:inline-block;width:14px;height:14px;border:2px solid #ddd;border-top-color:var(--red);border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;}
   @keyframes spin{to{transform:rotate(360deg);}}
+
+  /* ---------- Full Command Center view (HOD/CEO) ---------- */
+  .cc-hero-row{display:grid;grid-template-columns:180px repeat(5,1fr);gap:12px;margin-bottom:20px;}
+  .cc-gauge-card{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);padding:12px;display:flex;flex-direction:column;align-items:center;justify-content:center;}
+  .cc-glabel{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-soft);margin-top:6px;font-family:'IBM Plex Mono',monospace;}
+  .cc-filters{display:flex;flex-wrap:wrap;gap:10px;align-items:center;background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);padding:12px 14px;margin-bottom:20px;}
+  .cc-filter-group{display:flex;flex-direction:column;}
+  .cc-filter-group label{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-soft);font-family:'IBM Plex Mono',monospace;display:block;margin-bottom:3px;}
+  .cc-search-group{flex:1;min-width:200px;}
+  .cc-search-group input{width:100%;}
+  .cc-clear-btn{align-self:flex-end;background:var(--charcoal);color:#fff;border:none;padding:8px 14px;border-radius:6px;font-size:12px;cursor:pointer;font-weight:500;}
+  .cc-clear-btn:hover{background:var(--red);}
+  .cc-section-title{display:flex;align-items:baseline;gap:10px;margin:26px 0 12px;}
+  .cc-section-title h2{font-size:19px;font-family:'Poppins',sans-serif;color:var(--charcoal-deep);}
+  .cc-count{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--ink-soft);}
+  .cc-grid-2{display:grid;grid-template-columns:1.3fr 1fr;gap:16px;}
+  .bar-mini{width:60px;height:6px;background:#EFEFEF;border-radius:4px;overflow:hidden;display:inline-block;vertical-align:middle;margin-right:6px;}
+  .bar-mini i{display:block;height:100%;background:var(--charcoal);}
+  .cc-leaderboard-row{display:grid;grid-template-columns:24px 1fr 60px;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid #F0F0F0;font-size:12.5px;}
+  .cc-leaderboard-row .rank{font-family:'IBM Plex Mono',monospace;color:var(--ink-soft);font-size:11px;}
+  .cc-leaderboard-row .score{font-family:'IBM Plex Mono',monospace;font-weight:600;text-align:right;}
+  .cc-pagination{display:flex;gap:8px;align-items:center;justify-content:flex-end;margin-top:10px;font-size:12px;font-family:'IBM Plex Mono',monospace;color:var(--ink-soft);}
+  .cc-pagination button{background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:5px 10px;cursor:pointer;font-family:'IBM Plex Mono',monospace;}
+  .cc-pagination button:disabled{opacity:.4;cursor:not-allowed;}
+  .tag-critical{background:var(--red-soft);color:var(--red);}
+  .tag-slip{background:var(--charcoal-deep);color:#fff;}
+  .tag-watch{background:var(--amber-soft);color:var(--amber);}
+  .tag-ready{background:var(--green-soft);color:var(--green);}
+  .tag-ontrack{background:#EFEFEF;color:var(--ink-soft);}
+  .tag-unplanned{background:#eee;color:#999;}
+  @media (max-width:1000px){ .cc-hero-row{grid-template-columns:repeat(2,1fr);} .cc-grid-2{grid-template-columns:1fr;} }
 </style>
 </head>
 <body>
@@ -230,26 +262,122 @@
 
   <!-- PROJECT READINESS (all roles, scoped to their sites) -->
   <div class="tab-panel" id="tab-readiness">
-    <div class="card">
-      <h3>Project Readiness — <span id="readinessScopeLabel">—</span></h3>
-      <p class="hint">Estimation & contracting readiness ahead of site activity start — pulled live from the CBD tracking sheet, the same data behind your original readiness dashboard.</p>
-      <div class="kpi-row" id="readinessKpis"></div>
-      <div class="filter-bar" id="readinessFilterBar">
-        <select id="fReadinessProject"></select>
-        <select id="fReadinessCategory"><option value="">All Categories</option></select>
-        <select id="fReadinessStatus">
-          <option value="">Slipping / Critical / Watch (default)</option>
-          <option value="Slipping">Slipping</option>
-          <option value="Critical">Critical</option>
-          <option value="Watch">Watch</option>
-          <option value="Ready">Fully Ready</option>
-          <option value="On Track">On Track</option>
-          <option value="Unplanned">Unplanned</option>
-        </select>
+    <div id="readinessSimpleView">
+      <div class="card">
+        <h3>Project Readiness — <span id="readinessScopeLabel">—</span></h3>
+        <p class="hint">Estimation & contracting readiness ahead of site activity start — pulled live from the CBD tracking sheet, the same data behind your original readiness dashboard.</p>
+        <div class="kpi-row" id="readinessKpis"></div>
+        <div class="filter-bar" id="readinessFilterBar">
+          <select id="fReadinessProject"></select>
+          <select id="fReadinessCategory"><option value="">All Categories</option></select>
+          <select id="fReadinessStatus">
+            <option value="">Slipping / Critical / Watch (default)</option>
+            <option value="Slipping">Slipping</option>
+            <option value="Critical">Critical</option>
+            <option value="Watch">Watch</option>
+            <option value="Ready">Fully Ready</option>
+            <option value="On Track">On Track</option>
+            <option value="Unplanned">Unplanned</option>
+          </select>
+        </div>
+        <div class="table-wrap"><table id="readinessTable"><thead><tr>
+          <th>Days to Start</th><th>Project</th><th>Wing</th><th>Category</th><th>Scope of Work</th><th>Start Date</th><th>Est %</th><th>Contract %</th><th>Status</th>
+        </tr></thead><tbody id="readinessBody"></tbody></table></div>
       </div>
-      <div class="table-wrap"><table id="readinessTable"><thead><tr>
-        <th>Days to Start</th><th>Project</th><th>Wing</th><th>Category</th><th>Scope of Work</th><th>Start Date</th><th>Est %</th><th>Contract %</th><th>Status</th>
-      </tr></thead><tbody id="readinessBody"></tbody></table></div>
+    </div>
+
+    <div id="readinessFullView" style="display:none;">
+      <div class="cc-hero-row">
+        <div class="cc-gauge-card">
+          <canvas id="ccGaugeChart" width="140" height="90"></canvas>
+          <div class="cc-glabel">Overall Readiness</div>
+        </div>
+        <div class="kpi"><div class="val" id="ccKpiTotal">–</div><div class="lbl">Work Items</div></div>
+        <div class="kpi"><div class="val green" id="ccKpiReady">–</div><div class="lbl">Fully Ready</div></div>
+        <div class="kpi"><div class="val amber" id="ccKpiWatch">–</div><div class="lbl">Watch ≤90d</div></div>
+        <div class="kpi"><div class="val red" id="ccKpiCritical">–</div><div class="lbl">Critical ≤45d</div></div>
+        <div class="kpi"><div class="val red" id="ccKpiSlip">–</div><div class="lbl">Slipping</div></div>
+      </div>
+
+      <div class="cc-filters">
+        <div class="cc-filter-group"><label>Project</label><select id="ccFProject"><option value="">All Projects</option></select></div>
+        <div class="cc-filter-group"><label>Wing / Tower</label><select id="ccFWing"><option value="">All Wings</option></select></div>
+        <div class="cc-filter-group"><label>Category</label><select id="ccFCategory"><option value="">All Categories</option></select></div>
+        <div class="cc-filter-group">
+          <label>Risk Status</label>
+          <select id="ccFStatus">
+            <option value="">All Statuses</option>
+            <option value="Slipping">Slipping / Overdue Start</option>
+            <option value="Critical">Critical ≤45d</option>
+            <option value="Watch">Watch ≤90d</option>
+            <option value="On Track">On Track</option>
+            <option value="Ready">Fully Ready</option>
+            <option value="Unplanned">Unplanned</option>
+          </select>
+        </div>
+        <div class="cc-filter-group cc-search-group"><label>Search Scope of Work</label><input type="text" id="ccFSearch" placeholder="e.g. waterproofing, painting…"></div>
+        <button class="cc-clear-btn" id="ccClearFilters">Clear Filters</button>
+      </div>
+
+      <div class="cc-section-title"><h2>Predictive Risk Radar</h2><span class="cc-count" id="ccRiskCount"></span></div>
+      <div class="table-wrap" style="max-height:360px;">
+        <table id="ccRiskTable"><thead><tr>
+          <th data-k="days">Days to Start</th><th data-k="project">Project</th><th data-k="wing">Wing</th>
+          <th data-k="category">Category</th><th data-k="scope">Scope of Work</th><th data-k="start">Start</th>
+          <th data-k="est">Est %</th><th data-k="contract">Contract %</th><th data-k="status">Status</th>
+        </tr></thead><tbody id="ccRiskBody"></tbody></table>
+      </div>
+
+      <div class="cc-section-title"><h2>Readiness Analytics</h2></div>
+      <div class="cc-grid-2">
+        <div class="card"><h3>Estimation vs Contract Readiness — by Project</h3><canvas id="ccProjectBarChart" height="220"></canvas></div>
+        <div class="card"><h3>Wing / Tower Leaderboard</h3><div id="ccLeaderboard"></div></div>
+      </div>
+      <div class="cc-grid-2" style="margin-top:16px;">
+        <div class="card"><h3>Upcoming Activity Starts (18 months)</h3><canvas id="ccTimelineChart" height="200"></canvas></div>
+        <div class="card"><h3>Weakest Trade Categories</h3><canvas id="ccCategoryChart" height="200"></canvas></div>
+      </div>
+
+      <div class="cc-section-title"><h2>Organization Bottleneck Diagnosis</h2><span class="cc-count" id="ccBottleneckCount"></span></div>
+      <div class="cc-grid-2">
+        <div class="card">
+          <h3 id="ccWidespreadHeadline">Most widespread stuck task —</h3>
+          <p class="hint">Ranked by how many wings across the org have this task stuck right now.</p>
+          <div class="table-wrap" style="max-height:300px;">
+            <table id="ccBottleneckTable"><thead><tr>
+              <th data-k="cat">Task</th><th data-k="stuckWings">Wings Stuck</th><th data-k="pctWings">% Affected</th><th data-k="stuckItems">Items Stuck</th><th data-k="avgReadiness">Avg Readiness</th>
+            </tr></thead><tbody id="ccBottleneckBody"></tbody></table>
+          </div>
+        </div>
+        <div class="card">
+          <h3 id="ccWeakestHeadline">Weakest task overall —</h3>
+          <p class="hint">Ranked by average readiness across every instance, org-wide.</p>
+          <canvas id="ccWeakestChart" height="260"></canvas>
+        </div>
+      </div>
+
+      <div class="cc-section-title"><h2>Overdue Deadlines</h2><span class="cc-count" id="ccOverdueCount"></span></div>
+      <div class="card" style="padding:0;">
+        <div class="table-wrap" style="max-height:280px;border:none;">
+          <table id="ccOverdueTable"><thead><tr>
+            <th>Type</th><th>Project</th><th>Wing</th><th>Scope of Work</th><th>Deadline</th><th>Days Overdue</th><th>Marks</th>
+          </tr></thead><tbody id="ccOverdueBody"></tbody></table>
+        </div>
+      </div>
+
+      <div class="cc-section-title"><h2>Full Work Item Register</h2><span class="cc-count" id="ccAllCount"></span></div>
+      <div class="table-wrap">
+        <table id="ccDataTable"><thead><tr>
+          <th data-k="project">Project</th><th data-k="wing">Wing</th><th data-k="category">Category</th>
+          <th data-k="item_no">Item #</th><th data-k="scope_of_work">Scope of Work</th><th data-k="activity_start_date">Start</th>
+          <th data-k="estimation_marks">Est %</th><th data-k="contract_marks">Contract %</th><th data-k="status">Status</th>
+        </tr></thead><tbody id="ccDataBody"></tbody></table>
+      </div>
+      <div class="cc-pagination">
+        <span id="ccPageInfo"></span>
+        <button id="ccPrevPage">← Prev</button>
+        <button id="ccNextPage">Next →</button>
+      </div>
     </div>
   </div>
 
@@ -793,31 +921,20 @@ function isUnrestrictedReadiness(){
   return ME.role==='CEO' || ME.role==='HOD' || !(ME.sites && ME.sites.length);
 }
 
-async function loadReadinessTab(){
-  if(READINESS_RAW){ renderReadinessTable(); return; }
-  document.getElementById('readinessBody').innerHTML = '<tr><td colspan="9" style="text-align:center;padding:20px;color:#999;"><span class="spinner-inline"></span> Loading readiness data…</td></tr>';
-  try{
-    const res = await fetch(CBD_FEED_URL, { cache:'no-store' });
-    const json = await res.json();
-    READINESS_RAW = json.rows || [];
-    enrichReadinessRows();
-    setupReadinessScopeUI();
-    renderReadinessTable();
-  } catch(err){
-    document.getElementById('readinessBody').innerHTML = '<tr><td colspan="9" style="text-align:center;padding:20px;color:var(--red);">Could not load readiness data: '+err.message+'</td></tr>';
-  }
-}
-
 function enrichReadinessRows(){
   const today = new Date(); today.setHours(0,0,0,0);
   const parseDate = s => { if(!s) return null; const d=new Date(s+'T00:00:00'); return isNaN(d)?null:d; };
   const daysBetween = (a,b) => Math.round((a-b)/86400000);
   READINESS_RAW.forEach(r=>{
     r._start = parseDate(r.activity_start_date);
-    const est = r.estimation_marks==null?0:r.estimation_marks;
-    const con = r.contract_marks==null?0:r.contract_marks;
+    r._pdl = parseDate(r.planning_deadline);
+    r._cdl = parseDate(r.contract_deadline);
+    r._est = (r.estimation_marks===null||r.estimation_marks===undefined) ? null : r.estimation_marks;
+    r._con = (r.contract_marks===null||r.contract_marks===undefined) ? null : r.contract_marks;
+    const est = r._est==null?0:r._est;
+    const con = r._con==null?0:r._con;
     r._readiness = (est+con)/2;
-    r._fullyReady = (r.estimation_marks===100 && r.contract_marks===100);
+    r._fullyReady = (r._est===100 && r._con===100);
     r._days = r._start ? daysBetween(r._start, today) : null;
     if(!r._start) r._status='Unplanned';
     else if(r._fullyReady) r._status='Ready';
@@ -826,6 +943,34 @@ function enrichReadinessRows(){
     else if(r._days<=90) r._status='Watch';
     else r._status='On Track';
   });
+}
+
+async function loadReadinessTab(){
+  const showFull = isUnrestrictedReadiness();
+  document.getElementById('readinessSimpleView').style.display = showFull ? 'none' : 'block';
+  document.getElementById('readinessFullView').style.display = showFull ? 'block' : 'none';
+
+  if(READINESS_RAW){
+    if(showFull) ccRenderAll(); else renderReadinessTable();
+    return;
+  }
+  const loadingTarget = showFull ? 'ccRiskBody' : 'readinessBody';
+  document.getElementById(loadingTarget).innerHTML = '<tr><td colspan="9" style="text-align:center;padding:20px;color:#999;"><span class="spinner-inline"></span> Loading readiness data…</td></tr>';
+  try{
+    const res = await fetch(CBD_FEED_URL, { cache:'no-store' });
+    const json = await res.json();
+    READINESS_RAW = json.rows || [];
+    enrichReadinessRows();
+    if(showFull){
+      ccSetupFilters();
+      ccRenderAll();
+    } else {
+      setupReadinessScopeUI();
+      renderReadinessTable();
+    }
+  } catch(err){
+    document.getElementById(loadingTarget).innerHTML = '<tr><td colspan="9" style="text-align:center;padding:20px;color:var(--red);">Could not load readiness data: '+err.message+'</td></tr>';
+  }
 }
 
 function setupReadinessScopeUI(){
@@ -882,6 +1027,271 @@ function renderReadinessTable(){
     const daysLabel = r._days===null?'—':(r._days<0?Math.abs(r._days)+'d overdue':r._days+'d');
     return '<tr><td class="mono">'+daysLabel+'</td><td>'+r.project+'</td><td>'+r.wing+'</td><td>'+(r.category||'—')+'</td><td>'+r.scope_of_work+'</td><td class="mono">'+(r.activity_start_date||'—')+'</td><td>'+Math.round(r.estimation_marks||0)+'%</td><td>'+Math.round(r.contract_marks||0)+'%</td><td>'+r._status+'</td></tr>';
   }).join('') || '<tr><td colspan="9" style="text-align:center;color:#999;padding:16px;">No items match this filter 🎉</td></tr>';
+}
+
+// ============== FULL COMMAND CENTER VIEW (HOD/CEO) ==============
+const STATUS_LABEL = {'Slipping':'Slipping / Overdue Start','Critical':'Critical ≤45d','Watch':'Watch ≤90d','On Track':'On Track','Ready':'Fully Ready','Unplanned':'Unplanned'};
+const STATUS_CLASS = {'Slipping':'tag-slip','Critical':'tag-critical','Watch':'tag-watch','On Track':'tag-ontrack','Ready':'tag-ready','Unplanned':'tag-unplanned'};
+let ccGaugeChartInstance, ccProjectBarChartInstance, ccTimelineChartInstance, ccCategoryChartInstance, ccWeakestChartInstance;
+let ccRiskSortKey='days', ccRiskSortDir=1, ccTableSortKey=null, ccTableSortDir=1, ccBnSortKey='stuckWings', ccBnSortDir=-1;
+let ccCurrentPage = 1;
+const CC_PAGE_SIZE = 50;
+
+function ccUniqueSorted(arr){ return [...new Set(arr)].filter(Boolean).sort(); }
+function ccFmtPct(v){ return (v===null||v===undefined)?'—':Math.round(v)+'%'; }
+function ccFmtDate(d){ return d ? d.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}) : '—'; }
+function ccBarMini(v){ const val=v===null||v===undefined?0:v; return '<span class="bar-mini"><i style="width:'+val+'%"></i></span>'+ccFmtPct(v); }
+function ccDaysBetween(a,b){ return Math.round((a-b)/86400000); }
+
+function ccSetupFilters(){
+  const projects = ccUniqueSorted(READINESS_RAW.map(r=>r.project));
+  const categories = ccUniqueSorted(READINESS_RAW.map(r=>r.category));
+  const fP = document.getElementById('ccFProject'), fC = document.getElementById('ccFCategory');
+  fP.innerHTML = '<option value="">All Projects</option>' + projects.map(p=>'<option>'+p+'</option>').join('');
+  fC.innerHTML = '<option value="">All Categories</option>' + categories.map(c=>'<option>'+c+'</option>').join('');
+  ccRefreshWingOptions();
+
+  [fP, document.getElementById('ccFWing'), fC, document.getElementById('ccFStatus')].forEach(el=>{
+    el.addEventListener('change', ()=>{ if(el===fP) ccRefreshWingOptions(); ccCurrentPage=1; ccRenderAll(); });
+  });
+  document.getElementById('ccFSearch').addEventListener('input', ()=>{ ccCurrentPage=1; ccRenderAll(); });
+  document.getElementById('ccClearFilters').addEventListener('click', ()=>{
+    fP.value=''; ccRefreshWingOptions(); document.getElementById('ccFWing').value='';
+    fC.value=''; document.getElementById('ccFStatus').value=''; document.getElementById('ccFSearch').value='';
+    ccCurrentPage=1; ccRenderAll();
+  });
+
+  document.querySelectorAll('#ccRiskTable th').forEach(th=>{
+    th.addEventListener('click', ()=>{ const k=th.dataset.k; if(ccRiskSortKey===k) ccRiskSortDir*=-1; else{ccRiskSortKey=k;ccRiskSortDir=1;} ccRenderAll(); });
+  });
+  document.querySelectorAll('#ccDataTable th').forEach(th=>{
+    th.addEventListener('click', ()=>{ const k=th.dataset.k; if(ccTableSortKey===k) ccTableSortDir*=-1; else{ccTableSortKey=k;ccTableSortDir=1;} ccRenderAll(); });
+  });
+  document.querySelectorAll('#ccBottleneckTable th').forEach(th=>{
+    th.addEventListener('click', ()=>{ const k=th.dataset.k; if(ccBnSortKey===k) ccBnSortDir*=-1; else{ccBnSortKey=k;ccBnSortDir=-1;} ccRenderAll(); });
+  });
+  document.getElementById('ccPrevPage').addEventListener('click', ()=>{ ccCurrentPage--; ccRenderAll(); });
+  document.getElementById('ccNextPage').addEventListener('click', ()=>{ ccCurrentPage++; ccRenderAll(); });
+}
+
+function ccRefreshWingOptions(){
+  const proj = document.getElementById('ccFProject').value;
+  const wings = ccUniqueSorted(READINESS_RAW.filter(r=> !proj || r.project===proj).map(r=>r.wing));
+  const sel = document.getElementById('ccFWing');
+  const keep = sel.value;
+  sel.innerHTML = '<option value="">All Wings</option>' + wings.map(w=>'<option>'+w+'</option>').join('');
+  if(wings.includes(keep)) sel.value = keep;
+}
+
+function ccGetFiltered(){
+  const proj=document.getElementById('ccFProject').value, wing=document.getElementById('ccFWing').value;
+  const cat=document.getElementById('ccFCategory').value, status=document.getElementById('ccFStatus').value;
+  const search=document.getElementById('ccFSearch').value.trim().toLowerCase();
+  return READINESS_RAW.filter(r=>{
+    if(proj && r.project!==proj) return false;
+    if(wing && r.wing!==wing) return false;
+    if(cat && r.category!==cat) return false;
+    if(status && r._status!==status) return false;
+    if(search && !(r.scope_of_work||'').toLowerCase().includes(search)) return false;
+    return true;
+  });
+}
+
+function ccRenderKPIs(rows){
+  const total=rows.length, ready=rows.filter(r=>r._status==='Ready').length, watch=rows.filter(r=>r._status==='Watch').length;
+  const critical=rows.filter(r=>r._status==='Critical').length, slip=rows.filter(r=>r._status==='Slipping').length;
+  const avgReadiness = rows.length ? rows.reduce((a,r)=>a+r._readiness,0)/rows.length : 0;
+  document.getElementById('ccKpiTotal').textContent = total.toLocaleString();
+  document.getElementById('ccKpiReady').textContent = ready.toLocaleString();
+  document.getElementById('ccKpiWatch').textContent = watch.toLocaleString();
+  document.getElementById('ccKpiCritical').textContent = critical.toLocaleString();
+  document.getElementById('ccKpiSlip').textContent = slip.toLocaleString();
+
+  const pct = Math.round(avgReadiness);
+  let color = '#E2231A'; if(pct>=80) color='#2E7D4F'; else if(pct>=50) color='#C97B2E';
+  if(ccGaugeChartInstance) ccGaugeChartInstance.destroy();
+  ccGaugeChartInstance = new Chart(document.getElementById('ccGaugeChart'), {
+    type:'doughnut',
+    data:{ datasets:[{ data:[pct,100-pct], backgroundColor:[color,'#EFEFEF'], borderWidth:0 }] },
+    options:{ circumference:180, rotation:270, cutout:'75%', plugins:{legend:{display:false},tooltip:{enabled:false}}, events:[] },
+    plugins:[{ id:'centerText', afterDraw(chart){
+      const {ctx,chartArea}=chart; ctx.save(); ctx.font="700 24px 'Poppins', sans-serif"; ctx.fillStyle=color; ctx.textAlign='center';
+      ctx.fillText(pct+'%', (chartArea.left+chartArea.right)/2, chartArea.bottom-4); ctx.restore();
+    }}]
+  });
+}
+
+function ccRenderRiskTable(rows){
+  let risk = rows.filter(r=>r._status==='Slipping'||r._status==='Critical'||r._status==='Watch');
+  document.getElementById('ccRiskCount').textContent = risk.length.toLocaleString()+' items at risk (of '+rows.length.toLocaleString()+' filtered)';
+  risk.sort((a,b)=>{
+    let av,bv;
+    switch(ccRiskSortKey){
+      case 'days': av=a._days??9999; bv=b._days??9999; break;
+      case 'project': av=a.project; bv=b.project; break;
+      case 'wing': av=a.wing; bv=b.wing; break;
+      case 'category': av=a.category||''; bv=b.category||''; break;
+      case 'scope': av=a.scope_of_work||''; bv=b.scope_of_work||''; break;
+      case 'start': av=a._start?a._start.getTime():0; bv=b._start?b._start.getTime():0; break;
+      case 'est': av=a._est??-1; bv=b._est??-1; break;
+      case 'contract': av=a._con??-1; bv=b._con??-1; break;
+      case 'status': av=a._status; bv=b._status; break;
+    }
+    if(av<bv) return -1*ccRiskSortDir; if(av>bv) return 1*ccRiskSortDir; return 0;
+  });
+  const top = risk.slice(0,150);
+  document.getElementById('ccRiskBody').innerHTML = top.map(r=>{
+    const daysLabel = r._days===null?'—':(r._days<0?Math.abs(r._days)+'d overdue':r._days+'d');
+    return '<tr><td class="mono">'+daysLabel+'</td><td>'+r.project+'</td><td>'+r.wing+'</td><td>'+(r.category||'—')+'</td><td>'+r.scope_of_work+'</td><td class="mono">'+ccFmtDate(r._start)+'</td><td>'+ccBarMini(r._est)+'</td><td>'+ccBarMini(r._con)+'</td><td><span class="tag '+STATUS_CLASS[r._status]+'">'+STATUS_LABEL[r._status]+'</span></td></tr>';
+  }).join('') || '<tr><td colspan="9" style="text-align:center;color:#999;padding:20px;">No at-risk items match current filters</td></tr>';
+}
+
+function ccRenderProjectChart(rows){
+  const byProject={};
+  rows.forEach(r=>{ if(!byProject[r.project]) byProject[r.project]={est:[],con:[]}; byProject[r.project].est.push(r._est==null?0:r._est); byProject[r.project].con.push(r._con==null?0:r._con); });
+  const labels=Object.keys(byProject).sort();
+  const estAvg=labels.map(p=>byProject[p].est.reduce((a,b)=>a+b,0)/byProject[p].est.length);
+  const conAvg=labels.map(p=>byProject[p].con.reduce((a,b)=>a+b,0)/byProject[p].con.length);
+  if(ccProjectBarChartInstance) ccProjectBarChartInstance.destroy();
+  ccProjectBarChartInstance = new Chart(document.getElementById('ccProjectBarChart'), {
+    type:'bar', data:{ labels, datasets:[{label:'Estimation %',data:estAvg,backgroundColor:'#3A3A3A'},{label:'Contract %',data:conAvg,backgroundColor:'#E2231A'}] },
+    options:{ responsive:true, scales:{y:{beginAtZero:true,max:100,grid:{color:'#EEEEEE'}},x:{grid:{display:false}}}, plugins:{legend:{position:'bottom'}} }
+  });
+}
+
+function ccRenderTimelineChart(rows){
+  const buckets={}; const now=new Date(); const nowMonth=new Date(now.getFullYear(),now.getMonth(),1);
+  for(let i=0;i<18;i++){ const d=new Date(nowMonth.getFullYear(),nowMonth.getMonth()+i,1); buckets[d.toLocaleDateString('en-GB',{month:'short',year:'2-digit'})]={ready:0,notready:0}; }
+  rows.forEach(r=>{
+    if(!r._start) return;
+    const monthsAhead=(r._start.getFullYear()-nowMonth.getFullYear())*12+(r._start.getMonth()-nowMonth.getMonth());
+    if(monthsAhead<0||monthsAhead>=18) return;
+    const key=r._start.toLocaleDateString('en-GB',{month:'short',year:'2-digit'});
+    if(!buckets[key]) return;
+    if(r._fullyReady) buckets[key].ready++; else buckets[key].notready++;
+  });
+  const labels=Object.keys(buckets);
+  if(ccTimelineChartInstance) ccTimelineChartInstance.destroy();
+  ccTimelineChartInstance = new Chart(document.getElementById('ccTimelineChart'), {
+    type:'bar', data:{ labels, datasets:[{label:'Ready',data:labels.map(k=>buckets[k].ready),backgroundColor:'#2E7D4F',stack:'s'},{label:'Not Ready',data:labels.map(k=>buckets[k].notready),backgroundColor:'#D8D8D8',stack:'s'}] },
+    options:{ responsive:true, scales:{x:{stacked:true,grid:{display:false}},y:{stacked:true,grid:{color:'#EEEEEE'}}}, plugins:{legend:{position:'bottom'}} }
+  });
+}
+
+function ccRenderCategoryChart(rows){
+  const byCat={}; rows.forEach(r=>{ const cat=r.category||'Uncategorized'; if(!byCat[cat]) byCat[cat]=[]; byCat[cat].push(r._readiness); });
+  let arr=Object.keys(byCat).map(c=>({cat:c,avg:byCat[c].reduce((a,b)=>a+b,0)/byCat[c].length}));
+  arr.sort((a,b)=>a.avg-b.avg); arr=arr.slice(0,10);
+  if(ccCategoryChartInstance) ccCategoryChartInstance.destroy();
+  ccCategoryChartInstance = new Chart(document.getElementById('ccCategoryChart'), {
+    type:'bar', data:{ labels:arr.map(a=>a.cat), datasets:[{label:'Avg Readiness %',data:arr.map(a=>a.avg),backgroundColor:'#E2231A'}] },
+    options:{ indexAxis:'y', responsive:true, scales:{x:{beginAtZero:true,max:100,grid:{color:'#EEEEEE'}},y:{grid:{display:false}}}, plugins:{legend:{display:false}} }
+  });
+}
+
+function ccComputeBottleneckStats(rows){
+  const map={};
+  rows.forEach(r=>{
+    const cat=r.category||'Uncategorized';
+    if(!map[cat]) map[cat]={totalWings:new Set(),stuckWings:new Set(),items:0,stuckItems:0,readinessSum:0};
+    const m=map[cat]; const wingKey=r.project+' — '+r.wing;
+    m.totalWings.add(wingKey); m.items++; m.readinessSum+=r._readiness;
+    if(r._status==='Critical'||r._status==='Slipping'){ m.stuckWings.add(wingKey); m.stuckItems++; }
+  });
+  return Object.keys(map).map(cat=>{
+    const m=map[cat];
+    return { cat, stuckWings:m.stuckWings.size, totalWings:m.totalWings.size, pctWings:m.totalWings.size?(m.stuckWings.size/m.totalWings.size*100):0, stuckItems:m.stuckItems, totalItems:m.items, avgReadiness:m.items?m.readinessSum/m.items:0 };
+  });
+}
+
+function ccRenderBottleneck(rows){
+  const stats = ccComputeBottleneckStats(rows);
+  document.getElementById('ccBottleneckCount').textContent = stats.length+' task categories analyzed';
+  const byStuck = stats.filter(s=>s.stuckWings>0).slice().sort((a,b)=>b.stuckWings-a.stuckWings);
+  document.getElementById('ccWidespreadHeadline').innerHTML = byStuck.length
+    ? 'Most widespread stuck task — <span style="color:var(--red)">'+byStuck[0].cat+'</span> <span class="mono" style="font-weight:400;color:var(--ink-soft);font-size:13px;">('+byStuck[0].stuckWings+' of '+byStuck[0].totalWings+' wings, '+Math.round(byStuck[0].pctWings)+'%)</span>'
+    : 'Most widespread stuck task — none currently stuck 🎉';
+
+  const byWeak = stats.slice().sort((a,b)=>a.avgReadiness-b.avgReadiness);
+  if(byWeak.length){
+    document.getElementById('ccWeakestHeadline').innerHTML = 'Weakest task overall — <span style="color:var(--red)">'+byWeak[0].cat+'</span> <span class="mono" style="font-weight:400;color:var(--ink-soft);font-size:13px;">(avg '+Math.round(byWeak[0].avgReadiness)+'%)</span>';
+  }
+  const weakTop10 = byWeak.slice(0,10);
+  if(ccWeakestChartInstance) ccWeakestChartInstance.destroy();
+  ccWeakestChartInstance = new Chart(document.getElementById('ccWeakestChart'), {
+    type:'bar', data:{ labels:weakTop10.map(s=>s.cat), datasets:[{label:'Avg Readiness %',data:weakTop10.map(s=>s.avgReadiness),backgroundColor:'#3A3A3A'}] },
+    options:{ indexAxis:'y', responsive:true, scales:{x:{beginAtZero:true,max:100,grid:{color:'#EEEEEE'}},y:{grid:{display:false}}}, plugins:{legend:{display:false}} }
+  });
+
+  let sorted = stats.slice();
+  sorted.sort((a,b)=>{ let av=a[ccBnSortKey],bv=b[ccBnSortKey]; if(av<bv) return -1*ccBnSortDir; if(av>bv) return 1*ccBnSortDir; return 0; });
+  document.getElementById('ccBottleneckBody').innerHTML = sorted.map(s=>{
+    let rowColor='#EFEFEF', textColor='var(--ink-soft)';
+    if(s.pctWings>=50){ rowColor='var(--red-soft)'; textColor='var(--red)'; } else if(s.pctWings>=20){ rowColor='var(--amber-soft)'; textColor='var(--amber)'; }
+    return '<tr><td>'+s.cat+'</td><td class="mono">'+s.stuckWings+' / '+s.totalWings+'</td><td><span class="tag" style="background:'+rowColor+';color:'+textColor+'">'+Math.round(s.pctWings)+'%</span></td><td class="mono">'+s.stuckItems+' / '+s.totalItems+'</td><td>'+ccBarMini(s.avgReadiness)+'</td></tr>';
+  }).join('') || '<tr><td colspan="5" style="text-align:center;color:#999;padding:20px;">No data for current filters</td></tr>';
+}
+
+function ccRenderLeaderboard(rows){
+  const byWing={}; rows.forEach(r=>{ const key=r.project+' — '+r.wing; if(!byWing[key]) byWing[key]=[]; byWing[key].push(r._readiness); });
+  let arr=Object.keys(byWing).map(k=>({key:k,avg:byWing[k].reduce((a,b)=>a+b,0)/byWing[k].length}));
+  arr.sort((a,b)=>b.avg-a.avg);
+  document.getElementById('ccLeaderboard').innerHTML = arr.map((a,i)=>{
+    let color='#E2231A'; if(a.avg>=80) color='#2E7D4F'; else if(a.avg>=50) color='#C97B2E';
+    return '<div class="cc-leaderboard-row"><span class="rank">'+(i+1)+'</span><span>'+a.key+'</span><span class="score" style="color:'+color+'">'+Math.round(a.avg)+'%</span></div>';
+  }).join('') || '<div style="color:#999;padding:10px;">No data</div>';
+}
+
+function ccRenderOverdue(rows){
+  const overdue=[]; const today=new Date(); today.setHours(0,0,0,0);
+  rows.forEach(r=>{
+    if(r._pdl && ccDaysBetween(today,r._pdl)>0 && r._est!==100) overdue.push({type:'Estimation Deadline',project:r.project,wing:r.wing,scope:r.scope_of_work,dl:r._pdl,marks:r._est});
+    if(r._cdl && ccDaysBetween(today,r._cdl)>0 && r._con!==100) overdue.push({type:'Contract Deadline',project:r.project,wing:r.wing,scope:r.scope_of_work,dl:r._cdl,marks:r._con});
+  });
+  overdue.sort((a,b)=>ccDaysBetween(today,b.dl)-ccDaysBetween(today,a.dl));
+  document.getElementById('ccOverdueCount').textContent = overdue.length.toLocaleString()+' overdue deadlines';
+  document.getElementById('ccOverdueBody').innerHTML = overdue.slice(0,150).map(o=>
+    '<tr><td><span class="tag tag-critical">'+o.type+'</span></td><td>'+o.project+'</td><td>'+o.wing+'</td><td>'+o.scope+'</td><td class="mono">'+ccFmtDate(o.dl)+'</td><td class="mono">'+ccDaysBetween(today,o.dl)+'d</td><td>'+ccFmtPct(o.marks)+'</td></tr>'
+  ).join('') || '<tr><td colspan="7" style="text-align:center;color:#999;padding:20px;">No overdue deadlines 🎉</td></tr>';
+}
+
+function ccRenderDataTable(rows){
+  let sorted = rows.slice();
+  if(ccTableSortKey){
+    sorted.sort((a,b)=>{
+      let av,bv;
+      if(ccTableSortKey==='activity_start_date'){ av=a._start?a._start.getTime():0; bv=b._start?b._start.getTime():0; }
+      else if(ccTableSortKey==='estimation_marks'){ av=a._est??-1; bv=b._est??-1; }
+      else if(ccTableSortKey==='contract_marks'){ av=a._con??-1; bv=b._con??-1; }
+      else if(ccTableSortKey==='status'){ av=a._status; bv=b._status; }
+      else { av=(a[ccTableSortKey]||''); bv=(b[ccTableSortKey]||''); }
+      if(av<bv) return -1*ccTableSortDir; if(av>bv) return 1*ccTableSortDir; return 0;
+    });
+  }
+  document.getElementById('ccAllCount').textContent = sorted.length.toLocaleString()+' work items';
+  const totalPages = Math.max(1, Math.ceil(sorted.length/CC_PAGE_SIZE));
+  if(ccCurrentPage>totalPages) ccCurrentPage = totalPages;
+  const startIdx=(ccCurrentPage-1)*CC_PAGE_SIZE;
+  const pageRows = sorted.slice(startIdx, startIdx+CC_PAGE_SIZE);
+  document.getElementById('ccDataBody').innerHTML = pageRows.map(r=>
+    '<tr><td>'+r.project+'</td><td>'+r.wing+'</td><td>'+(r.category||'—')+'</td><td class="mono">'+(r.item_no||'—')+'</td><td>'+r.scope_of_work+'</td><td class="mono">'+ccFmtDate(r._start)+'</td><td>'+ccBarMini(r._est)+'</td><td>'+ccBarMini(r._con)+'</td><td><span class="tag '+STATUS_CLASS[r._status]+'">'+STATUS_LABEL[r._status]+'</span></td></tr>'
+  ).join('') || '<tr><td colspan="9" style="text-align:center;color:#999;padding:20px;">No items match current filters</td></tr>';
+  document.getElementById('ccPageInfo').textContent = 'Page '+ccCurrentPage+' of '+totalPages;
+  document.getElementById('ccPrevPage').disabled = ccCurrentPage<=1;
+  document.getElementById('ccNextPage').disabled = ccCurrentPage>=totalPages;
+}
+
+function ccRenderAll(){
+  const filtered = ccGetFiltered();
+  ccRenderKPIs(filtered);
+  ccRenderRiskTable(filtered);
+  ccRenderProjectChart(filtered);
+  ccRenderTimelineChart(filtered);
+  ccRenderCategoryChart(filtered);
+  ccRenderBottleneck(filtered);
+  ccRenderLeaderboard(filtered);
+  ccRenderOverdue(filtered);
+  ccRenderDataTable(filtered);
 }
 </script>
 </body>
