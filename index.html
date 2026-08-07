@@ -350,8 +350,8 @@
           </div>
         </div>
         <div class="card">
-          <h3 id="ccWeakestHeadline">Weakest task overall —</h3>
-          <p class="hint">Ranked by average readiness across every instance, org-wide.</p>
+          <h3 id="ccWeakestHeadline">Tasks stuck across the most wings —</h3>
+          <p class="hint">% of wings where this task is currently Critical or Slipping — breadth of the problem, not just its average score.</p>
           <canvas id="ccWeakestChart" height="260"></canvas>
         </div>
       </div>
@@ -989,7 +989,7 @@ function setupReadinessScopeUI(){
     projSel.innerHTML = (mySites.length>1 ? '<option value="">All My Sites</option>' : '') + mySites.map(p=>'<option>'+p+'</option>').join('');
   }
 
-  const categories = [...new Set(READINESS_RAW.map(r=>r.category))].filter(Boolean).sort();
+  const categories = [...new Set(READINESS_RAW.map(r=>r.category))].filter(Boolean).filter(ccIsRealCategory).sort();
   catSel.innerHTML = '<option value="">All Categories</option>' + categories.map(c=>'<option>'+c+'</option>').join('');
 
   projSel.addEventListener('change', renderReadinessTable);
@@ -1043,9 +1043,19 @@ function ccFmtDate(d){ return d ? d.toLocaleDateString('en-GB',{day:'2-digit',mo
 function ccBarMini(v){ const val=v===null||v===undefined?0:v; return '<span class="bar-mini"><i style="width:'+val+'%"></i></span>'+ccFmtPct(v); }
 function ccDaysBetween(a,b){ return Math.round((a-b)/86400000); }
 
+// Defensive filter: some tracker sheets have stray rows where a person's name
+// ends up in the "ITEM OF WORK" column instead of a real trade category —
+// our parser forward-fills that as a category. Since we already have the
+// roster loaded, strip out anything that matches a team member's name.
+function ccIsRealCategory(cat){
+  if(!cat) return false;
+  const c = String(cat).trim().toLowerCase();
+  return !ALL_MEMBERS.some(m => (m.name||'').trim().toLowerCase() === c);
+}
+
 function ccSetupFilters(){
   const projects = ccUniqueSorted(READINESS_RAW.map(r=>r.project));
-  const categories = ccUniqueSorted(READINESS_RAW.map(r=>r.category));
+  const categories = ccUniqueSorted(READINESS_RAW.map(r=>r.category)).filter(ccIsRealCategory);
   const fP = document.getElementById('ccFProject'), fC = document.getElementById('ccFCategory');
   fP.innerHTML = '<option value="">All Projects</option>' + projects.map(p=>'<option>'+p+'</option>').join('');
   fC.innerHTML = '<option value="">All Categories</option>' + categories.map(c=>'<option>'+c+'</option>').join('');
@@ -1179,13 +1189,13 @@ function ccRenderTimelineChart(rows){
 }
 
 function ccRenderCategoryChart(rows){
-  const byCat={}; rows.forEach(r=>{ const cat=r.category||'Uncategorized'; if(!byCat[cat]) byCat[cat]=[]; byCat[cat].push(r._readiness); });
+  const byCat={}; rows.forEach(r=>{ const cat=r.category||'Uncategorized'; if(!ccIsRealCategory(cat)) return; if(!byCat[cat]) byCat[cat]=[]; byCat[cat].push(r._readiness); });
   let arr=Object.keys(byCat).map(c=>({cat:c,avg:byCat[c].reduce((a,b)=>a+b,0)/byCat[c].length}));
   arr.sort((a,b)=>a.avg-b.avg); arr=arr.slice(0,10);
   if(ccCategoryChartInstance) ccCategoryChartInstance.destroy();
   ccCategoryChartInstance = new Chart(document.getElementById('ccCategoryChart'), {
     type:'bar', data:{ labels:arr.map(a=>a.cat), datasets:[{label:'Avg Readiness %',data:arr.map(a=>a.avg),backgroundColor:'#E2231A'}] },
-    options:{ indexAxis:'y', responsive:true, scales:{x:{beginAtZero:true,max:100,grid:{color:'#EEEEEE'}},y:{grid:{display:false}}}, plugins:{legend:{display:false}} }
+    options:{ responsive:true, scales:{x:{grid:{display:false},ticks:{autoSkip:false,maxRotation:45,minRotation:0}},y:{beginAtZero:true,max:100,grid:{color:'#EEEEEE'}}}, plugins:{legend:{display:false}} }
   });
 }
 
@@ -1193,6 +1203,7 @@ function ccComputeBottleneckStats(rows){
   const map={};
   rows.forEach(r=>{
     const cat=r.category||'Uncategorized';
+    if(!ccIsRealCategory(cat)) return;
     if(!map[cat]) map[cat]={totalWings:new Set(),stuckWings:new Set(),items:0,stuckItems:0,readinessSum:0};
     const m=map[cat]; const wingKey=r.project+' — '+r.wing;
     m.totalWings.add(wingKey); m.items++; m.readinessSum+=r._readiness;
@@ -1213,14 +1224,17 @@ function ccRenderBottleneck(rows){
     : 'Most widespread stuck task — none currently stuck 🎉';
 
   const byWeak = stats.slice().sort((a,b)=>a.avgReadiness-b.avgReadiness);
-  if(byWeak.length){
-    document.getElementById('ccWeakestHeadline').innerHTML = 'Weakest task overall — <span style="color:var(--red)">'+byWeak[0].cat+'</span> <span class="mono" style="font-weight:400;color:var(--ink-soft);font-size:13px;">(avg '+Math.round(byWeak[0].avgReadiness)+'%)</span>';
-  }
-  const weakTop10 = byWeak.slice(0,10);
+  document.getElementById('ccWeakestHeadline').innerHTML = byWeak.length
+    ? 'Tasks stuck across the most wings — <span style="color:var(--red)">'+(byStuck[0]?byStuck[0].cat:byWeak[0].cat)+'</span>'
+    : 'Tasks stuck across the most wings —';
+
+  // Distinct from the "avg readiness" chart above: this shows breadth of the
+  // problem (% of wings affected), not depth (average score).
+  const spreadTop10 = byStuck.slice(0,10);
   if(ccWeakestChartInstance) ccWeakestChartInstance.destroy();
   ccWeakestChartInstance = new Chart(document.getElementById('ccWeakestChart'), {
-    type:'bar', data:{ labels:weakTop10.map(s=>s.cat), datasets:[{label:'Avg Readiness %',data:weakTop10.map(s=>s.avgReadiness),backgroundColor:'#3A3A3A'}] },
-    options:{ indexAxis:'y', responsive:true, scales:{x:{beginAtZero:true,max:100,grid:{color:'#EEEEEE'}},y:{grid:{display:false}}}, plugins:{legend:{display:false}} }
+    type:'bar', data:{ labels:spreadTop10.map(s=>s.cat), datasets:[{label:'% of Wings Stuck',data:spreadTop10.map(s=>s.pctWings),backgroundColor:'#3A3A3A'}] },
+    options:{ responsive:true, scales:{x:{grid:{display:false},ticks:{autoSkip:false,maxRotation:45,minRotation:0}},y:{beginAtZero:true,max:100,grid:{color:'#EEEEEE'}}}, plugins:{legend:{display:false}} }
   });
 
   let sorted = stats.slice();
