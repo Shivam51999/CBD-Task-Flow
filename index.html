@@ -1,11 +1,10 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
+<base target="_top">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>CBD & Estimation Portal — Mangalam Landmarks</title>
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   :root{
     --bg:#FAFAFA; --paper:#FFFFFF; --ink:#231F20; --ink-soft:#8C8C8D;
@@ -20,20 +19,11 @@
   button{cursor:pointer;font-family:'Inter',sans-serif;}
   input,select,textarea{font-family:'Inter',sans-serif;font-size:13px;padding:8px 10px;border-radius:6px;border:1px solid var(--line);background:#fff;color:var(--ink);}
 
-  /* ---------- LOGIN SCREEN ---------- */
-  #loginScreen{min-height:100vh;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:16px;}
-  .login-card{background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:36px 40px;width:min(380px,90vw);text-align:center;}
-  .brand-dot{width:12px;height:12px;border-radius:50%;background:var(--red);display:inline-block;margin-bottom:10px;}
-  .login-card h1{font-size:22px;color:var(--charcoal-deep);margin-bottom:4px;}
-  .login-card p{font-size:12.5px;color:var(--ink-soft);margin:6px 0 20px;}
-  .login-card input{width:100%;margin-bottom:12px;}
-  .login-card button{width:100%;background:var(--charcoal);color:#fff;border:none;padding:10px;border-radius:6px;font-weight:600;font-size:13px;}
-  .login-card button:hover{background:var(--red);}
-  .login-msg{font-size:12px;margin-top:10px;min-height:16px;}
-  .login-msg.ok{color:var(--green);}
-  .login-msg.err{color:var(--red);}
+  #loadingScreen,#unauthScreen{min-height:100vh;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px;text-align:center;padding:20px;}
+  .brand-dot{width:12px;height:12px;border-radius:50%;background:var(--red);display:inline-block;margin-bottom:6px;}
+  #unauthScreen h1{font-size:20px;color:var(--charcoal-deep);}
+  #unauthScreen p{font-size:13px;color:var(--ink-soft);max-width:340px;}
 
-  /* ---------- APP SHELL ---------- */
   #appShell{display:none;padding:24px 30px 60px;max-width:1300px;margin:0 auto;}
   .topbar{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:16px;margin-bottom:20px;flex-wrap:wrap;gap:12px;}
   .topbar .title{font-size:26px;color:var(--charcoal-deep);}
@@ -41,8 +31,6 @@
   .who{text-align:right;font-size:12.5px;}
   .who b{color:var(--charcoal-deep);}
   .role-pill{display:inline-block;background:var(--red-soft);color:var(--red);font-size:10px;font-weight:700;padding:2px 9px;border-radius:20px;margin-left:6px;font-family:'IBM Plex Mono',monospace;}
-  .signout{font-size:11px;color:var(--ink-soft);background:none;border:1px solid var(--line);padding:4px 10px;border-radius:20px;margin-left:8px;}
-  .signout:hover{border-color:var(--red);color:var(--red);}
 
   .tabs{display:flex;gap:6px;margin-bottom:20px;border-bottom:1px solid var(--line);flex-wrap:wrap;}
   .tab-btn{background:none;border:none;padding:10px 16px;font-size:13px;font-weight:600;color:var(--ink-soft);border-bottom:2px solid transparent;}
@@ -52,7 +40,7 @@
 
   .card{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);padding:18px;margin-bottom:18px;}
   .card h3{font-size:15px;color:var(--charcoal-deep);margin-bottom:14px;}
-  .kpi-row{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:20px;}
+  .kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px;}
   .kpi{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);padding:12px 14px;}
   .kpi .val{font-family:'Poppins',sans-serif;font-size:26px;font-weight:700;color:var(--charcoal-deep);}
   .kpi .lbl{font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-soft);font-family:'IBM Plex Mono',monospace;margin-top:4px;}
@@ -66,7 +54,7 @@
   .chip.on{background:var(--charcoal);color:#fff;border-color:var(--charcoal);}
   .submit-btn{background:var(--red);color:#fff;border:none;padding:9px 20px;border-radius:6px;font-weight:600;font-size:13px;margin-top:6px;}
   .submit-btn:hover{background:var(--charcoal);}
-  .status-msg{font-size:12px;margin-top:8px;}
+  .status-msg{font-size:12px;margin-top:8px;min-height:14px;}
   .status-msg.ok{color:var(--green);} .status-msg.err{color:var(--red);}
 
   table{width:100%;border-collapse:collapse;font-size:12.5px;}
@@ -75,44 +63,34 @@
   tr:hover td{background:#FAFAFA;}
   .table-wrap{max-height:460px;overflow:auto;}
   select.status-select{font-size:11.5px;padding:4px 6px;}
-  .tag{display:inline-block;padding:2px 9px;border-radius:20px;font-size:10px;font-family:'IBM Plex Mono',monospace;font-weight:600;}
-  .tag-done{background:var(--green-soft);color:var(--green);}
-  .tag-progress{background:var(--amber-soft);color:var(--amber);}
-  .tag-blocked{background:var(--red-soft);color:var(--red);}
-  .tag-notstarted{background:#EFEFEF;color:var(--ink-soft);}
   .filter-bar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;}
   .filter-bar select,.filter-bar input{font-size:12px;padding:6px 9px;}
+  .spinner{width:22px;height:22px;border:3px solid var(--line);border-top-color:var(--red);border-radius:50%;animation:spin 0.8s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg);}}
 </style>
 </head>
 <body>
 
-<!-- ============== LOGIN SCREEN ============== -->
-<div id="loginScreen">
-  <div class="login-card">
-    <span class="brand-dot"></span>
-    <h1>CBD & Estimation Portal</h1>
-    <p>Mangalam Landmarks LLP — sign in with your registered work email. We'll send you a one-click login link, no password needed.</p>
-    <input type="email" id="loginEmail" placeholder="you@mangalamlandmark.com">
-    <button id="loginBtn">Send Login Link</button>
-    <div class="login-msg" id="loginMsg"></div>
-  </div>
+<div id="loadingScreen"><span class="brand-dot"></span><div class="spinner"></div></div>
+
+<div id="unauthScreen" style="display:none;">
+  <span class="brand-dot"></span>
+  <h1>Not on the roster yet</h1>
+  <p id="unauthMsg">Your Google account isn't registered on the team roster for this portal. Contact your HOD to be added, then reload this page.</p>
 </div>
 
-<!-- ============== APP SHELL ============== -->
 <div id="appShell">
   <div class="topbar">
     <div>
       <div class="eyebrow">Mangalam Landmarks LLP</div>
-      <div class="title">CBD & Estimation Portal</div>
+      <div class="title">Team Portal</div>
     </div>
     <div class="who">
       <span id="whoName">—</span><span class="role-pill" id="whoRole">—</span>
-      <button class="signout" id="signOutBtn">Sign out</button>
     </div>
   </div>
 
   <div class="kpi-row" id="kpiRow"></div>
-
   <div class="tabs" id="tabBar"></div>
 
   <!-- HOD TABS -->
@@ -129,9 +107,7 @@
         <div><label>Name</label><input id="newName"></div>
         <div><label>Email</label><input id="newEmail" type="email"></div>
         <div><label>Mobile</label><input id="newMobile"></div>
-        <div><label>Role</label>
-          <select id="newRole"><option>Estimation</option><option>CBD</option><option>HOD</option></select>
-        </div>
+        <div><label>Role</label><select id="newRole"><option>Estimation</option><option>CBD</option><option>HOD</option></select></div>
         <div class="full"><label>Sites</label><div class="chip-group" id="newSitesChips"></div></div>
       </div>
       <button class="submit-btn" id="addMemberBtn">Add Member</button>
@@ -214,68 +190,46 @@
 </div>
 
 <script>
-// ============== CONFIG — fill these in after creating your Supabase project ==============
-const SUPABASE_URL = 'YOUR_SUPABASE_PROJECT_URL';       // e.g. https://xxxxx.supabase.co
-const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';      // Project Settings → API → anon public key
-// ===========================================================================================
+// ---------- google.script.run promise wrapper ----------
+function gs(fnName, ...args){
+  return new Promise((resolve, reject)=>{
+    google.script.run
+      .withSuccessHandler(resolve)
+      .withFailureHandler(err => reject(err))
+      [fnName](...args);
+  });
+}
 
-const ALL_SITES = ['MANGALAM MIDAS CITY','MARVEL','MIRAYA','MITHILA','SHYNI GOLD','NIYOSHI PARK','AIKYAM','MELIZMA','MOMENTO','MYRA','LIFEPARK','STARVIEW'];
+let ME = null;
+let ALL_MEMBERS = [];
+let ALL_SITES = [];
 
-const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+async function boot(){
+  try{
+    const me = await gs('getCurrentUser');
+    if(me.error){
+      document.getElementById('loadingScreen').style.display = 'none';
+      document.getElementById('unauthScreen').style.display = 'flex';
+      return;
+    }
+    ME = me;
+    ALL_SITES = await gs('getAllSites');
+    ALL_MEMBERS = await gs('getRoster');
 
-let ME = null;        // team_members row for logged-in user
-let ALL_MEMBERS = []; // cached roster
+    document.getElementById('loadingScreen').style.display = 'none';
+    document.getElementById('appShell').style.display = 'block';
+    document.getElementById('whoName').textContent = ME.name;
+    document.getElementById('whoRole').textContent = ME.role;
 
-// ---------- AUTH ----------
-document.getElementById('loginBtn').addEventListener('click', async () => {
-  const email = document.getElementById('loginEmail').value.trim();
-  const msg = document.getElementById('loginMsg');
-  if(!email){ msg.textContent = 'Enter your email.'; msg.className='login-msg err'; return; }
-  msg.textContent = 'Sending link…'; msg.className = 'login-msg';
-  const { error } = await sb.auth.signInWithOtp({ email, options: { emailRedirectTo: window.location.href } });
-  if(error){ msg.textContent = error.message; msg.className='login-msg err'; }
-  else { msg.textContent = 'Check your email for the login link.'; msg.className='login-msg ok'; }
-});
-
-document.getElementById('signOutBtn').addEventListener('click', async () => {
-  await sb.auth.signOut();
-  window.location.reload();
-});
-
-sb.auth.onAuthStateChange(async (event, session) => {
-  if(session){ await bootstrapApp(session); }
-});
-
-(async () => {
-  const { data:{ session } } = await sb.auth.getSession();
-  if(session) await bootstrapApp(session);
-})();
-
-async function bootstrapApp(session){
-  const email = session.user.email;
-  const { data, error } = await sb.from('team_members').select('*').ilike('email', email).maybeSingle();
-  if(error || !data){
-    document.getElementById('loginMsg').textContent = 'Your email is not registered on the team roster. Contact your HOD.';
-    document.getElementById('loginMsg').className = 'login-msg err';
-    await sb.auth.signOut();
-    return;
+    setupTabs();
+    if(ME.role === 'HOD') await renderHOD();
+    else await renderMember();
+  } catch(err){
+    document.getElementById('loadingScreen').innerHTML =
+      '<span class="brand-dot"></span><p style="color:var(--red);font-size:13px;max-width:320px;text-align:center;">Error loading portal: '+(err.message||err)+'</p>';
   }
-  ME = data;
-  document.getElementById('loginScreen').style.display = 'none';
-  document.getElementById('appShell').style.display = 'block';
-  document.getElementById('whoName').textContent = ME.name;
-  document.getElementById('whoRole').textContent = ME.role;
-  await loadRoster();
-  setupTabs();
-  if(ME.role === 'HOD') await renderHOD();
-  else await renderMember();
 }
-
-// ---------- SHARED DATA ----------
-async function loadRoster(){
-  const { data } = await sb.from('team_members').select('*').order('name');
-  ALL_MEMBERS = data || [];
-}
+boot();
 
 function siteChips(containerId, preselected=[]){
   const c = document.getElementById(containerId);
@@ -293,12 +247,6 @@ function getSelectedChips(containerId){
   return [...document.querySelectorAll('#'+containerId+' .chip.on')].map(c=>c.dataset.site);
 }
 
-function statusTag(status){
-  const map = {'Done':'tag-done','In Progress':'tag-progress','Blocked':'tag-blocked','Not Started':'tag-notstarted'};
-  return '<span class="tag '+(map[status]||'tag-notstarted')+'">'+status+'</span>';
-}
-
-// ---------- TABS ----------
 function setupTabs(){
   const tabBar = document.getElementById('tabBar');
   const hodTabs = [
@@ -355,25 +303,26 @@ async function addMember(){
   const role = document.getElementById('newRole').value;
   const sites = getSelectedChips('newSitesChips');
   if(!name || !email){ msg.textContent='Name and email required.'; msg.className='status-msg err'; return; }
-  const { error } = await sb.from('team_members').insert({ name, email, mobile, role, sites });
-  if(error){ msg.textContent = error.message; msg.className='status-msg err'; return; }
-  msg.textContent = 'Added.'; msg.className='status-msg ok';
-  document.getElementById('newName').value=''; document.getElementById('newEmail').value=''; document.getElementById('newMobile').value='';
-  siteChips('newSitesChips');
-  await loadRoster();
-  populateTeamTable();
-  populateAssignForm();
+  try{
+    await gs('addTeamMember', { name, email, mobile, role, sites });
+    msg.textContent = 'Added.'; msg.className='status-msg ok';
+    document.getElementById('newName').value=''; document.getElementById('newEmail').value=''; document.getElementById('newMobile').value='';
+    siteChips('newSitesChips');
+    ALL_MEMBERS = await gs('getRoster');
+    populateTeamTable();
+    populateAssignForm();
+  } catch(err){ msg.textContent = err.message||err; msg.className='status-msg err'; }
 }
 
 function populateAssignForm(){
   const siteSel = document.getElementById('taskSite');
   siteSel.innerHTML = ALL_SITES.map(s=>'<option>'+s+'</option>').join('');
   const assigneeSel = document.getElementById('taskAssignee');
-  assigneeSel.innerHTML = ALL_MEMBERS.filter(m=>m.role!=='HOD').map(m=>'<option value="'+m.id+'">'+m.name+' ('+m.role+')</option>').join('');
+  assigneeSel.innerHTML = ALL_MEMBERS.filter(m=>m.role!=='HOD').map(m=>'<option value="'+m.email+'">'+m.name+' ('+m.role+')</option>').join('');
   const filterSel = document.getElementById('fTaskAssignee');
-  filterSel.innerHTML = '<option value="">All Assignees</option>' + ALL_MEMBERS.filter(m=>m.role!=='HOD').map(m=>'<option value="'+m.id+'">'+m.name+'</option>').join('');
+  filterSel.innerHTML = '<option value="">All Assignees</option>' + ALL_MEMBERS.filter(m=>m.role!=='HOD').map(m=>'<option value="'+m.email+'">'+m.name+'</option>').join('');
   const feedFilterSel = document.getElementById('fFeedPerson');
-  feedFilterSel.innerHTML = '<option value="">All Team Members</option>' + ALL_MEMBERS.map(m=>'<option value="'+m.id+'">'+m.name+'</option>').join('');
+  feedFilterSel.innerHTML = '<option value="">All Team Members</option>' + ALL_MEMBERS.map(m=>'<option value="'+m.email+'">'+m.name+'</option>').join('');
 }
 
 async function assignTask(){
@@ -381,65 +330,68 @@ async function assignTask(){
   const title = document.getElementById('taskTitle').value.trim();
   const description = document.getElementById('taskDesc').value.trim();
   const site = document.getElementById('taskSite').value;
-  const assigned_to = document.getElementById('taskAssignee').value;
+  const assignedToEmail = document.getElementById('taskAssignee').value;
   const priority = document.getElementById('taskPriority').value;
-  const due_date = document.getElementById('taskDue').value || null;
-  if(!title || !assigned_to){ msg.textContent='Title and assignee required.'; msg.className='status-msg err'; return; }
-  const { error } = await sb.from('tasks').insert({ title, description, site, assigned_to, assigned_by: ME.id, priority, due_date });
-  if(error){ msg.textContent = error.message; msg.className='status-msg err'; return; }
-  msg.textContent = 'Task assigned.'; msg.className='status-msg ok';
-  document.getElementById('taskTitle').value=''; document.getElementById('taskDesc').value=''; document.getElementById('taskDue').value='';
-  await renderAllTasks(); await renderKPIsHOD();
+  const dueDate = document.getElementById('taskDue').value || '';
+  if(!title || !assignedToEmail){ msg.textContent='Title and assignee required.'; msg.className='status-msg err'; return; }
+  try{
+    await gs('assignTask', { title, description, site, assignedToEmail, priority, dueDate });
+    msg.textContent = 'Task assigned.'; msg.className='status-msg ok';
+    document.getElementById('taskTitle').value=''; document.getElementById('taskDesc').value=''; document.getElementById('taskDue').value='';
+    await renderAllTasks(); await renderKPIsHOD();
+  } catch(err){ msg.textContent = err.message||err; msg.className='status-msg err'; }
 }
 
+let ALL_TASKS_CACHE = [];
 async function renderAllTasks(){
-  let q = sb.from('tasks').select('*, assignee:assigned_to(name)').order('due_date', {ascending:true});
-  const { data } = await q;
-  let rows = data || [];
+  ALL_TASKS_CACHE = await gs('getAllTasks');
+  let rows = ALL_TASKS_CACHE.slice();
   const fAssignee = document.getElementById('fTaskAssignee').value;
   const fStatus = document.getElementById('fTaskStatus').value;
-  if(fAssignee) rows = rows.filter(r=>r.assigned_to===fAssignee);
-  if(fStatus) rows = rows.filter(r=>r.status===fStatus);
-  document.getElementById('allTasksBody').innerHTML = rows.map(r=>
-    '<tr><td>'+r.title+'</td><td>'+r.site+'</td><td>'+(r.assignee?r.assignee.name:'—')+'</td><td>'+r.priority+'</td><td>'+(r.due_date||'—')+'</td>'+
-    '<td><select class="status-select" data-id="'+r.id+'">'+
-      ['Not Started','In Progress','Done','Blocked'].map(s=>'<option'+(s===r.status?' selected':'')+'>'+s+'</option>').join('')+
-    '</select></td></tr>'
-  ).join('') || '<tr><td colspan="6" style="text-align:center;color:#999;padding:16px;">No tasks yet</td></tr>';
+  if(fAssignee) rows = rows.filter(r=>r.AssignedToEmail===fAssignee);
+  if(fStatus) rows = rows.filter(r=>r.Status===fStatus);
+  rows.sort((a,b)=> (a.DueDate||'').localeCompare(b.DueDate||''));
+  document.getElementById('allTasksBody').innerHTML = rows.map(r=>{
+    const assignee = ALL_MEMBERS.find(m=>m.email===r.AssignedToEmail);
+    return '<tr><td>'+r.Title+'</td><td>'+r.Site+'</td><td>'+(assignee?assignee.name:r.AssignedToEmail)+'</td><td>'+r.Priority+'</td><td>'+(r.DueDate||'—')+'</td>'+
+    '<td><select class="status-select" data-id="'+r.ID+'">'+
+      ['Not Started','In Progress','Done','Blocked'].map(s=>'<option'+(s===r.Status?' selected':'')+'>'+s+'</option>').join('')+
+    '</select></td></tr>';
+  }).join('') || '<tr><td colspan="6" style="text-align:center;color:#999;padding:16px;">No tasks yet</td></tr>';
 
   document.querySelectorAll('#allTasksBody .status-select').forEach(sel=>{
     sel.addEventListener('change', async ()=>{
-      await sb.from('tasks').update({ status: sel.value, updated_at: new Date().toISOString() }).eq('id', sel.dataset.id);
+      await gs('updateTaskStatus', sel.dataset.id, sel.value);
       await renderKPIsHOD();
     });
   });
 }
 
 async function renderFeed(){
-  let q = sb.from('daily_activity').select('*, member:team_member_id(name)').order('activity_date', {ascending:false}).limit(200);
-  const { data } = await q;
+  const data = await gs('getAllFeed');
   let rows = data || [];
   const fPerson = document.getElementById('fFeedPerson').value;
   const fDate = document.getElementById('fFeedDate').value;
-  if(fPerson) rows = rows.filter(r=>r.team_member_id===fPerson);
-  if(fDate) rows = rows.filter(r=>r.activity_date===fDate);
-  document.getElementById('feedBody').innerHTML = rows.map(r=>
-    '<tr><td class="mono">'+r.activity_date+'</td><td>'+(r.member?r.member.name:'—')+'</td><td>'+r.site+'</td><td>'+r.work_done+'</td><td>'+(r.hours_spent??'—')+'</td></tr>'
-  ).join('') || '<tr><td colspan="5" style="text-align:center;color:#999;padding:16px;">No activity logged yet</td></tr>';
+  if(fPerson) rows = rows.filter(r=>r.Email===fPerson);
+  if(fDate) rows = rows.filter(r=>r.Date===fDate);
+  document.getElementById('feedBody').innerHTML = rows.map(r=>{
+    const person = ALL_MEMBERS.find(m=>m.email===r.Email);
+    return '<tr><td class="mono">'+r.Date+'</td><td>'+(person?person.name:r.Email)+'</td><td>'+r.Site+'</td><td>'+r.WorkDone+'</td><td>'+(r.HoursSpent||'—')+'</td></tr>';
+  }).join('') || '<tr><td colspan="5" style="text-align:center;color:#999;padding:16px;">No activity logged yet</td></tr>';
 }
 
 async function renderKPIsHOD(){
-  const { data: tasks } = await sb.from('tasks').select('*');
-  const { data: activity } = await sb.from('daily_activity').select('*').eq('activity_date', new Date().toISOString().slice(0,10));
-  const t = tasks || [];
-  const overdue = t.filter(r=> r.due_date && r.due_date < new Date().toISOString().slice(0,10) && r.status!=='Done').length;
-  const done = t.filter(r=>r.status==='Done').length;
+  const tasks = await gs('getAllTasks');
+  const feed = await gs('getAllFeed');
+  const todayStr = new Date().toISOString().slice(0,10);
+  const overdue = tasks.filter(r=> r.DueDate && r.DueDate < todayStr && r.Status!=='Done').length;
+  const done = tasks.filter(r=>r.Status==='Done').length;
+  const loggedToday = feed.filter(r=> String(r.Date).slice(0,10) === todayStr).length;
   document.getElementById('kpiRow').innerHTML = [
     ['Team Members', ALL_MEMBERS.length],
-    ['Total Tasks', t.length],
+    ['Total Tasks', tasks.length],
     ['Done', done],
-    ['Overdue', overdue],
-    ['Logged Today', (activity||[]).length]
+    ['Overdue', overdue]
   ].map(([lbl,val])=>'<div class="kpi"><div class="val">'+val+'</div><div class="lbl">'+lbl+'</div></div>').join('');
 }
 
@@ -457,63 +409,65 @@ async function renderMember(){
   document.getElementById('logSubmitBtn').addEventListener('click', submitActivity);
 }
 
+let MY_TASKS_CACHE = [];
 async function renderKPIsMember(){
-  const { data: tasks } = await sb.from('tasks').select('*').eq('assigned_to', ME.id);
-  const t = tasks || [];
-  const open = t.filter(r=>r.status!=='Done').length;
-  const overdue = t.filter(r=> r.due_date && r.due_date < new Date().toISOString().slice(0,10) && r.status!=='Done').length;
-  const { data: activity } = await sb.from('daily_activity').select('*').eq('team_member_id', ME.id).eq('activity_date', new Date().toISOString().slice(0,10));
+  MY_TASKS_CACHE = await gs('getMyTasks');
+  const todayStr = new Date().toISOString().slice(0,10);
+  const open = MY_TASKS_CACHE.filter(r=>r.Status!=='Done').length;
+  const overdue = MY_TASKS_CACHE.filter(r=> r.DueDate && r.DueDate < todayStr && r.Status!=='Done').length;
+  const myFeed = await gs('getMyFeed');
+  const loggedToday = myFeed.some(r=> String(r.Date).slice(0,10) === todayStr);
   document.getElementById('kpiRow').innerHTML = [
     ['My Sites', (ME.sites||[]).length],
     ['Open Tasks', open],
     ['Overdue', overdue],
-    ['Logged Today', (activity||[]).length ? 'Yes' : 'No']
+    ['Logged Today', loggedToday ? 'Yes' : 'No']
   ].map(([lbl,val])=>'<div class="kpi"><div class="val">'+val+'</div><div class="lbl">'+lbl+'</div></div>').join('');
 }
 
 async function renderMyTasks(){
-  const { data } = await sb.from('tasks').select('*').eq('assigned_to', ME.id).order('due_date');
-  const rows = data || [];
+  MY_TASKS_CACHE = await gs('getMyTasks');
+  const rows = MY_TASKS_CACHE.slice().sort((a,b)=> (a.DueDate||'').localeCompare(b.DueDate||''));
   document.getElementById('myTasksBody').innerHTML = rows.map(r=>
-    '<tr><td>'+r.title+'</td><td>'+r.site+'</td><td>'+r.priority+'</td><td>'+(r.due_date||'—')+'</td>'+
-    '<td><select class="status-select" data-id="'+r.id+'">'+
-      ['Not Started','In Progress','Done','Blocked'].map(s=>'<option'+(s===r.status?' selected':'')+'>'+s+'</option>').join('')+
+    '<tr><td>'+r.Title+'</td><td>'+r.Site+'</td><td>'+r.Priority+'</td><td>'+(r.DueDate||'—')+'</td>'+
+    '<td><select class="status-select" data-id="'+r.ID+'">'+
+      ['Not Started','In Progress','Done','Blocked'].map(s=>'<option'+(s===r.Status?' selected':'')+'>'+s+'</option>').join('')+
     '</select></td></tr>'
   ).join('') || '<tr><td colspan="5" style="text-align:center;color:#999;padding:16px;">No tasks assigned yet</td></tr>';
 
   document.querySelectorAll('#myTasksBody .status-select').forEach(sel=>{
     sel.addEventListener('change', async ()=>{
-      await sb.from('tasks').update({ status: sel.value, updated_at: new Date().toISOString() }).eq('id', sel.dataset.id);
+      await gs('updateTaskStatus', sel.dataset.id, sel.value);
       await renderKPIsMember();
     });
   });
 }
 
 async function populateMyTaskDropdown(){
-  const { data } = await sb.from('tasks').select('*').eq('assigned_to', ME.id).neq('status','Done');
-  const sel = document.getElementById('logTask');
-  sel.innerHTML = '<option value="">— none —</option>' + (data||[]).map(t=>'<option value="'+t.id+'">'+t.title+'</option>').join('');
+  const openTasks = MY_TASKS_CACHE.filter(t=>t.Status!=='Done');
+  document.getElementById('logTask').innerHTML = '<option value="">— none —</option>' + openTasks.map(t=>'<option value="'+t.ID+'">'+t.Title+'</option>').join('');
 }
 
 async function submitActivity(){
   const msg = document.getElementById('logMsg');
-  const activity_date = document.getElementById('logDate').value;
+  const date = document.getElementById('logDate').value;
   const site = document.getElementById('logSite').value;
-  const task_id = document.getElementById('logTask').value || null;
-  const hours_spent = document.getElementById('logHours').value || null;
-  const work_done = document.getElementById('logWork').value.trim();
-  if(!site || !work_done){ msg.textContent='Site and work description required.'; msg.className='status-msg err'; return; }
-  const { error } = await sb.from('daily_activity').insert({ team_member_id: ME.id, task_id, site, activity_date, hours_spent, work_done });
-  if(error){ msg.textContent = error.message; msg.className='status-msg err'; return; }
-  msg.textContent = 'Logged.'; msg.className='status-msg ok';
-  document.getElementById('logWork').value=''; document.getElementById('logHours').value='';
-  await renderMyFeed(); await renderKPIsMember();
+  const taskId = document.getElementById('logTask').value || '';
+  const hoursSpent = document.getElementById('logHours').value || '';
+  const workDone = document.getElementById('logWork').value.trim();
+  if(!site || !workDone){ msg.textContent='Site and work description required.'; msg.className='status-msg err'; return; }
+  try{
+    await gs('logActivity', { date, site, taskId, hoursSpent, workDone });
+    msg.textContent = 'Logged.'; msg.className='status-msg ok';
+    document.getElementById('logWork').value=''; document.getElementById('logHours').value='';
+    await renderMyFeed(); await renderKPIsMember();
+  } catch(err){ msg.textContent = err.message||err; msg.className='status-msg err'; }
 }
 
 async function renderMyFeed(){
-  const { data } = await sb.from('daily_activity').select('*').eq('team_member_id', ME.id).order('activity_date',{ascending:false}).limit(50);
+  const data = await gs('getMyFeed');
   document.getElementById('myFeedBody').innerHTML = (data||[]).map(r=>
-    '<tr><td class="mono">'+r.activity_date+'</td><td>'+r.site+'</td><td>'+r.work_done+'</td><td>'+(r.hours_spent??'—')+'</td></tr>'
+    '<tr><td class="mono">'+r.Date+'</td><td>'+r.Site+'</td><td>'+r.WorkDone+'</td><td>'+(r.HoursSpent||'—')+'</td></tr>'
   ).join('') || '<tr><td colspan="4" style="text-align:center;color:#999;padding:16px;">No entries yet</td></tr>';
 }
 </script>
