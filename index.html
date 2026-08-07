@@ -42,6 +42,15 @@
   #greetingScreen h1{font-size:32px;color:var(--charcoal-deep);}
   .greeting-quote{font-size:16px;color:var(--ink);max-width:420px;line-height:1.5;font-family:'Poppins',sans-serif;font-weight:500;}
   .greeting-dedication{font-size:13.5px;color:var(--red);background:var(--red-soft);padding:8px 16px;border-radius:20px;max-width:420px;}
+
+  #greetingTopBar{
+    display:none;position:sticky;top:0;z-index:500;background:var(--charcoal-deep);color:#fff;
+    align-items:center;justify-content:center;gap:14px;padding:8px 16px;font-size:12.5px;
+    font-family:'Poppins',sans-serif;font-weight:500;text-align:center;
+  }
+  #greetingTopBar span{max-width:900px;}
+  #closeGreetingTopBar{background:none;border:none;color:#fff;opacity:.7;font-size:15px;padding:0 4px;}
+  #closeGreetingTopBar:hover{opacity:1;color:var(--red);}
   .topbar{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:16px;margin-bottom:20px;flex-wrap:wrap;gap:12px;}
   .topbar .title{font-size:26px;color:var(--charcoal-deep);}
   .topbar .eyebrow{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-soft);font-weight:600;}
@@ -121,6 +130,11 @@
   <button class="submit-btn" id="greetingContinueBtn" style="width:auto;">Continue →</button>
 </div>
 
+<div id="greetingTopBar">
+  <span id="greetingTopText"></span>
+  <button id="closeGreetingTopBar">×</button>
+</div>
+
 <div id="appShell">
   <div class="topbar">
     <div>
@@ -192,6 +206,7 @@
       <p class="hint">Amber rows are "Pending Review" — the assignee marked it done, waiting on approval.</p>
       <div class="filter-bar">
         <select id="fTaskAssignee"><option value="">All Assignees</option></select>
+        <select id="fTaskSite"><option value="">All Sites</option></select>
         <select id="fTaskStatus"><option value="">All Statuses</option><option>Not Started</option><option>In Progress</option><option>Pending Review</option><option>Done</option><option>Blocked</option></select>
       </div>
       <div class="table-wrap"><table id="allTasksTable"><thead><tr>
@@ -245,6 +260,10 @@
     <div class="card">
       <h3>My Tasks</h3>
       <p class="hint">Mark a task "Pending Review" when finished — your HOD or CEO approves it to mark it Done.</p>
+      <div class="filter-bar">
+        <select id="fMyTaskSite"><option value="">All Sites</option></select>
+        <select id="fMyTaskStatus"><option value="">All Statuses</option><option>Not Started</option><option>In Progress</option><option>Pending Review</option><option>Done</option><option>Blocked</option></select>
+      </div>
       <div class="table-wrap"><table id="myTasksTable"><thead><tr>
         <th>Title</th><th>Site</th><th>Priority</th><th>Due</th><th>Status</th>
       </tr></thead><tbody id="myTasksBody"></tbody></table></div>
@@ -283,8 +302,8 @@
 
 <script>
 // ============== CONFIG ==============
-const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwUjm2KBbPI2iRQ3aO8Og2AFh2qOZJFAAx91ak4Jw6JO-j6tZqlu7PQJoBU5niniN-j/exec'; // paste your portal /exec URL here
-const CBD_FEED_URL = 'https://script.google.com/macros/s/AKfycbwUjm2KBbPI2iRQ3aO8Og2AFh2qOZJFAAx91ak4Jw6JO-j6tZqlu7PQJoBU5niniN-j/exec'; // paste the CBD_Tracker_Feed_Code.gs /exec URL here (the readiness dashboard's data feed)
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwUjm2KBbPI2iRQ3aO8Og2AFh2qOZJFAAx91ak4Jw6JO-j6tZqlu7PQJoBU5niniN-j/exec';
+const CBD_FEED_URL = 'https://script.google.com/macros/s/AKfycbwUjm2KBbPI2iRQ3aO8Og2AFh2qOZJFAAx91ak4Jw6JO-j6tZqlu7PQJoBU5niniN-j/exec';
 const ALL_SITES_FALLBACK = ['MANGALAM MIDAS CITY','MARVEL','MIRAYA','MITHILA','SHYNI GOLD','NIYOSHI PARK','AIKYAM','MELIZMA','MOMENTO','MYRA','LIFEPARK','STARVIEW'];
 const TOKEN_KEY = 'mangalam_portal_token';
 
@@ -370,23 +389,35 @@ function getGreetingContent(){
 }
 
 let greetingTimer = null;
+let currentGreeting = null;
+
 function showGreeting(){
   const g = getGreetingContent();
+  currentGreeting = g;
   const firstName = (ME.name||'').split(' ')[0];
   document.getElementById('greetingTitle').textContent = 'Mangalam Namaste, ' + firstName + '!';
   document.getElementById('greetingQuote').textContent = g.quote;
   const dEl = document.getElementById('greetingDedication');
   if(g.dedication){ dEl.textContent = g.dedication; dEl.style.display='block'; } else { dEl.style.display='none'; }
+  document.getElementById('greetingTopBar').style.display='none';
   document.getElementById('greetingScreen').style.display='flex';
   clearTimeout(greetingTimer);
-  greetingTimer = setTimeout(hideGreeting, 4000);
+  greetingTimer = setTimeout(moveGreetingToTopBar, 2000);
 }
-function hideGreeting(){
+function moveGreetingToTopBar(){
   clearTimeout(greetingTimer);
   document.getElementById('greetingScreen').style.display='none';
+  const g = currentGreeting || getGreetingContent();
+  const firstName = (ME.name||'').split(' ')[0];
+  let text = 'Mangalam Namaste, ' + firstName + '! ' + g.quote + (g.dedication ? '   ·   ' + g.dedication : '');
+  document.getElementById('greetingTopText').textContent = text;
+  document.getElementById('greetingTopBar').style.display='flex';
 }
-document.getElementById('greetingContinueBtn').addEventListener('click', hideGreeting);
+document.getElementById('greetingContinueBtn').addEventListener('click', moveGreetingToTopBar);
 document.getElementById('greetBtn').addEventListener('click', showGreeting);
+document.getElementById('closeGreetingTopBar').addEventListener('click', ()=>{
+  document.getElementById('greetingTopBar').style.display='none';
+});
 
 function siteChips(id, preselected=[]){
   const c = document.getElementById(id); c.innerHTML='';
@@ -434,6 +465,7 @@ async function renderManagerCommon(){
   document.getElementById('addMemberBtn').addEventListener('click', addMember);
   document.getElementById('assignTaskBtn').addEventListener('click', assignTask);
   document.getElementById('fTaskAssignee').addEventListener('change', renderAllTasks);
+  document.getElementById('fTaskSite').addEventListener('change', renderAllTasks);
   document.getElementById('fTaskStatus').addEventListener('change', renderAllTasks);
   document.getElementById('fFeedPerson').addEventListener('change', renderFeed);
   document.getElementById('fFeedDate').addEventListener('change', renderFeed);
@@ -467,6 +499,7 @@ function populateAssignForm(){
   document.getElementById('taskSite').innerHTML = ALL_SITES.map(s=>'<option>'+s+'</option>').join('');
   document.getElementById('taskAssignee').innerHTML = ALL_MEMBERS.filter(m=>m.role!=='HOD'&&m.role!=='CEO').map(m=>'<option value="'+m.email+'">'+m.name+' ('+m.role+')</option>').join('');
   document.getElementById('fTaskAssignee').innerHTML = '<option value="">All Assignees</option>' + ALL_MEMBERS.filter(m=>m.role!=='HOD'&&m.role!=='CEO').map(m=>'<option value="'+m.email+'">'+m.name+'</option>').join('');
+  document.getElementById('fTaskSite').innerHTML = '<option value="">All Sites</option>' + ALL_SITES.map(s=>'<option>'+s+'</option>').join('');
   document.getElementById('fFeedPerson').innerHTML = '<option value="">All Team Members</option>' + ALL_MEMBERS.map(m=>'<option value="'+m.email+'">'+m.name+'</option>').join('');
 }
 
@@ -492,8 +525,10 @@ async function renderAllTasks(){
   ALL_TASKS_CACHE = await api('getAllTasks', {});
   let rows = ALL_TASKS_CACHE.slice();
   const fAssignee = document.getElementById('fTaskAssignee').value;
+  const fSite = document.getElementById('fTaskSite').value;
   const fStatus = document.getElementById('fTaskStatus').value;
   if(fAssignee) rows = rows.filter(r=>r.AssignedToEmail===fAssignee);
+  if(fSite) rows = rows.filter(r=>r.Site===fSite);
   if(fStatus) rows = rows.filter(r=>r.Status===fStatus);
   rows.sort((a,b)=>(a.DueDate||'').localeCompare(b.DueDate||''));
   document.getElementById('allTasksBody').innerHTML = rows.map(r=>{
@@ -670,18 +705,35 @@ async function renderKPIsMember(){
 
 async function renderMyTasks(){
   MY_TASKS_CACHE = await api('getMyTasks', {});
-  const rows = MY_TASKS_CACHE.slice().sort((a,b)=>(a.DueDate||'').localeCompare(b.DueDate||''));
+
+  const siteSel = document.getElementById('fMyTaskSite');
+  if(siteSel.options.length<=1){
+    const sites = [...new Set(MY_TASKS_CACHE.map(t=>t.Site))].filter(Boolean).sort();
+    siteSel.innerHTML = '<option value="">All Sites</option>' + sites.map(s=>'<option>'+s+'</option>').join('');
+    siteSel.addEventListener('change', renderMyTasksTable);
+    document.getElementById('fMyTaskStatus').addEventListener('change', renderMyTasksTable);
+  }
+  renderMyTasksTable();
+}
+
+function renderMyTasksTable(){
+  let rows = MY_TASKS_CACHE.slice();
+  const fSite = document.getElementById('fMyTaskSite').value;
+  const fStatus = document.getElementById('fMyTaskStatus').value;
+  if(fSite) rows = rows.filter(r=>r.Site===fSite);
+  if(fStatus) rows = rows.filter(r=>r.Status===fStatus);
+  rows.sort((a,b)=> (a.DueDate||'').localeCompare(b.DueDate||''));
   document.getElementById('myTasksBody').innerHTML = rows.map(r=>{
     if(r.Status==='Done') return '<tr><td>'+r.Title+'</td><td>'+r.Site+'</td><td>'+r.Priority+'</td><td>'+(r.DueDate||'—')+'</td><td><span class="tag tag-done">Done</span></td></tr>';
     const options = ['Not Started','In Progress','Pending Review','Blocked'];
     return '<tr><td>'+r.Title+'</td><td>'+r.Site+'</td><td>'+r.Priority+'</td><td>'+(r.DueDate||'—')+'</td>'+
     '<td><select class="status-select" data-id="'+r.ID+'">'+options.map(s=>'<option'+(s===r.Status?' selected':'')+'>'+s+'</option>').join('')+'</select></td></tr>';
-  }).join('') || '<tr><td colspan="5" style="text-align:center;color:#999;padding:16px;">No tasks assigned yet</td></tr>';
+  }).join('') || '<tr><td colspan="5" style="text-align:center;color:#999;padding:16px;">No tasks match this filter</td></tr>';
 
   document.querySelectorAll('#myTasksBody .status-select').forEach(sel=>{
     sel.addEventListener('change', async ()=>{
       try{ await api('updateTaskStatus', { taskId: sel.dataset.id, status: sel.value }); await renderKPIsMember(); await renderMyPerformance(); }
-      catch(err){ alert(err.message); await renderMyTasks(); }
+      catch(err){ alert(err.message); await renderMyTasksTable(); }
     });
   });
 }
