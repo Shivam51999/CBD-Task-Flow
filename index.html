@@ -234,8 +234,18 @@
       <h3>Project Readiness — <span id="readinessScopeLabel">—</span></h3>
       <p class="hint">Estimation & contracting readiness ahead of site activity start — pulled live from the CBD tracking sheet, the same data behind your original readiness dashboard.</p>
       <div class="kpi-row" id="readinessKpis"></div>
-      <div class="filter-bar" id="readinessFilterBar" style="display:none;">
-        <select id="fReadinessProject"><option value="">All Projects</option></select>
+      <div class="filter-bar" id="readinessFilterBar">
+        <select id="fReadinessProject"></select>
+        <select id="fReadinessCategory"><option value="">All Categories</option></select>
+        <select id="fReadinessStatus">
+          <option value="">Slipping / Critical / Watch (default)</option>
+          <option value="Slipping">Slipping</option>
+          <option value="Critical">Critical</option>
+          <option value="Watch">Watch</option>
+          <option value="Ready">Fully Ready</option>
+          <option value="On Track">On Track</option>
+          <option value="Unplanned">Unplanned</option>
+        </select>
       </div>
       <div class="table-wrap"><table id="readinessTable"><thead><tr>
         <th>Days to Start</th><th>Project</th><th>Wing</th><th>Category</th><th>Scope of Work</th><th>Start Date</th><th>Est %</th><th>Contract %</th><th>Status</th>
@@ -820,28 +830,38 @@ function enrichReadinessRows(){
 
 function setupReadinessScopeUI(){
   const scopeLabel = document.getElementById('readinessScopeLabel');
-  const filterBar = document.getElementById('readinessFilterBar');
+  const projSel = document.getElementById('fReadinessProject');
+  const catSel = document.getElementById('fReadinessCategory');
+  const statusSel = document.getElementById('fReadinessStatus');
+
   if(isUnrestrictedReadiness()){
     scopeLabel.textContent = 'All Projects';
-    filterBar.style.display = 'flex';
     const projects = [...new Set(READINESS_RAW.map(r=>r.project))].filter(Boolean).sort();
-    const sel = document.getElementById('fReadinessProject');
-    sel.innerHTML = '<option value="">All Projects</option>' + projects.map(p=>'<option>'+p+'</option>').join('');
-    sel.addEventListener('change', renderReadinessTable);
+    projSel.innerHTML = '<option value="">All Projects</option>' + projects.map(p=>'<option>'+p+'</option>').join('');
   } else {
-    scopeLabel.textContent = (ME.sites||[]).join(', ') || 'No sites assigned';
-    filterBar.style.display = 'none';
+    const mySites = (ME.sites||[]).filter(Boolean);
+    scopeLabel.textContent = mySites.join(', ') || 'No sites assigned';
+    projSel.innerHTML = (mySites.length>1 ? '<option value="">All My Sites</option>' : '') + mySites.map(p=>'<option>'+p+'</option>').join('');
   }
+
+  const categories = [...new Set(READINESS_RAW.map(r=>r.category))].filter(Boolean).sort();
+  catSel.innerHTML = '<option value="">All Categories</option>' + categories.map(c=>'<option>'+c+'</option>').join('');
+
+  projSel.addEventListener('change', renderReadinessTable);
+  catSel.addEventListener('change', renderReadinessTable);
+  statusSel.addEventListener('change', renderReadinessTable);
 }
 
 function renderReadinessTable(){
   let rows = READINESS_RAW || [];
-  if(isUnrestrictedReadiness()){
-    const fp = document.getElementById('fReadinessProject').value;
-    if(fp) rows = rows.filter(r=>r.project===fp);
-  } else {
-    rows = rows.filter(r=> (ME.sites||[]).includes(r.project));
+  if(!isUnrestrictedReadiness()){
+    rows = rows.filter(r => (ME.sites||[]).includes(r.project));
   }
+  const fProject = document.getElementById('fReadinessProject').value;
+  const fCategory = document.getElementById('fReadinessCategory').value;
+  const fStatus = document.getElementById('fReadinessStatus').value;
+  if(fProject) rows = rows.filter(r=>r.project===fProject);
+  if(fCategory) rows = rows.filter(r=>r.category===fCategory);
 
   const total = rows.length;
   const ready = rows.filter(r=>r._status==='Ready').length;
@@ -854,13 +874,14 @@ function renderReadinessTable(){
     ['Slipping', slipping, 'red']
   ].map(([lbl,val,cls])=>'<div class="kpi"><div class="val '+cls+'">'+val+'</div><div class="lbl">'+lbl+'</div></div>').join('');
 
-  const risk = rows.filter(r=>r._status==='Slipping'||r._status==='Critical'||r._status==='Watch')
-    .sort((a,b)=>(a._days??9999)-(b._days??9999)).slice(0,150);
+  // If a specific status is chosen, show exactly that; otherwise default to the at-risk set
+  let displayRows = fStatus ? rows.filter(r=>r._status===fStatus) : rows.filter(r=>r._status==='Slipping'||r._status==='Critical'||r._status==='Watch');
+  displayRows = displayRows.slice().sort((a,b)=>(a._days??9999)-(b._days??9999)).slice(0,150);
 
-  document.getElementById('readinessBody').innerHTML = risk.map(r=>{
+  document.getElementById('readinessBody').innerHTML = displayRows.map(r=>{
     const daysLabel = r._days===null?'—':(r._days<0?Math.abs(r._days)+'d overdue':r._days+'d');
     return '<tr><td class="mono">'+daysLabel+'</td><td>'+r.project+'</td><td>'+r.wing+'</td><td>'+(r.category||'—')+'</td><td>'+r.scope_of_work+'</td><td class="mono">'+(r.activity_start_date||'—')+'</td><td>'+Math.round(r.estimation_marks||0)+'%</td><td>'+Math.round(r.contract_marks||0)+'%</td><td>'+r._status+'</td></tr>';
-  }).join('') || '<tr><td colspan="9" style="text-align:center;color:#999;padding:16px;">No at-risk items in scope 🎉</td></tr>';
+  }).join('') || '<tr><td colspan="9" style="text-align:center;color:#999;padding:16px;">No items match this filter 🎉</td></tr>';
 }
 </script>
 </body>
