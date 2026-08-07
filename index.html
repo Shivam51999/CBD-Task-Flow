@@ -486,8 +486,11 @@
 
 <script>
 // ============== CONFIG ==============
-const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxtQyKVSu5gPP4h4JMKRe_djKiF4pGg0Elbuz9mxlEHr8tJMMzJDJY6oXC6feHJBP3p/exec';
-const CBD_FEED_URL = 'https://script.google.com/macros/s/AKfycbzTEIVvRq37iEqX7jYZjwG7CRtb5hwDbmLj3gfndZs70q18fKytzMPFoI6UKoQMPd9J/exec';
+// Both point to the SAME unified Apps Script deployment now — GET requests
+// serve the readiness feed, POST requests handle login/tasks/activity/approvals.
+const MANGALAM_API_URL = 'https://script.google.com/macros/s/AKfycbxqW62sN83MvGp455CIJCvbtcQc76mB1pa6nnTKguOabYwye8-WKmtWcIW2wazWpcKy/exec';
+const APPS_SCRIPT_URL = MANGALAM_API_URL;
+const CBD_FEED_URL = MANGALAM_API_URL;
 const ALL_SITES_FALLBACK = ['MANGALAM MIDAS CITY','MARVEL','MIRAYA','MITHILA','SHYNI GOLD','NIYOSHI PARK','AIKYAM','MELIZMA','MOMENTO','MYRA','LIFEPARK','STARVIEW'];
 const TOKEN_KEY = 'mangalam_portal_token';
 
