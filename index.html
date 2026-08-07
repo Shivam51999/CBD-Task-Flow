@@ -31,7 +31,6 @@
   .login-card button.linkish:hover{color:var(--red);background:none;}
   .login-msg{font-size:12px;margin-top:6px;min-height:16px;}
   .login-msg.ok{color:var(--green);} .login-msg.err{color:var(--red);}
-  #otpStep{display:none;}
 
   #appShell{display:none;padding:24px 30px 60px;max-width:1350px;margin:0 auto;}
   #welcomeBanner{border-color:var(--red);}
@@ -95,17 +94,12 @@
   <div class="login-card">
     <span class="brand-dot"></span>
     <h1>Mangalam Portal</h1>
-    <p>CBD & Estimation — sign in with your registered email. We'll email you a one-time 6-digit code.</p>
+    <p>CBD & Estimation — sign in with your registered email and mobile number.</p>
 
     <div id="emailStep">
       <input type="email" id="loginEmail" placeholder="you@example.com">
-      <button id="sendCodeBtn">Send Login Code</button>
-    </div>
-
-    <div id="otpStep">
-      <input type="text" id="otpInput" placeholder="6-digit code" maxlength="6" inputmode="numeric">
-      <button id="verifyCodeBtn">Verify & Log In</button>
-      <button class="linkish" id="backToEmailBtn">Use a different email</button>
+      <input type="tel" id="loginMobile" placeholder="Mobile number">
+      <button id="sendCodeBtn">Log In</button>
     </div>
 
     <div class="login-msg" id="loginMsg"></div>
@@ -281,32 +275,14 @@ async function api(action, payload){
 }
 
 // ---------- LOGIN FLOW ----------
-let pendingEmail = null;
 document.getElementById('sendCodeBtn').addEventListener('click', async ()=>{
   const email = document.getElementById('loginEmail').value.trim();
+  const mobile = document.getElementById('loginMobile').value.trim();
   const msg = document.getElementById('loginMsg');
-  if(!email){ msg.textContent='Enter your email.'; msg.className='login-msg err'; return; }
-  msg.innerHTML = '<span class="spinner-inline"></span> Sending code…'; msg.className='login-msg';
+  if(!email || !mobile){ msg.textContent='Enter both email and mobile number.'; msg.className='login-msg err'; return; }
+  msg.innerHTML = '<span class="spinner-inline"></span> Logging in…'; msg.className='login-msg';
   try{
-    await api('requestLogin', { email });
-    pendingEmail = email;
-    document.getElementById('emailStep').style.display='none';
-    document.getElementById('otpStep').style.display='block';
-    msg.textContent = 'Code sent — check your email.'; msg.className='login-msg ok';
-  } catch(err){ msg.textContent = err.message; msg.className='login-msg err'; }
-});
-document.getElementById('backToEmailBtn').addEventListener('click', ()=>{
-  document.getElementById('otpStep').style.display='none';
-  document.getElementById('emailStep').style.display='block';
-  document.getElementById('loginMsg').textContent='';
-});
-document.getElementById('verifyCodeBtn').addEventListener('click', async ()=>{
-  const otp = document.getElementById('otpInput').value.trim();
-  const msg = document.getElementById('loginMsg');
-  if(!otp){ msg.textContent='Enter the code.'; msg.className='login-msg err'; return; }
-  msg.innerHTML = '<span class="spinner-inline"></span> Verifying…'; msg.className='login-msg';
-  try{
-    const result = await api('verifyLogin', { email: pendingEmail, otp });
+    const result = await api('login', { email, mobile });
     TOKEN = result.token;
     try{ localStorage.setItem(TOKEN_KEY, TOKEN); }catch(e){}
     await startApp(result.profile);
