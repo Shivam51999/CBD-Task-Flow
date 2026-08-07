@@ -921,6 +921,13 @@ function isUnrestrictedReadiness(){
   return ME.role==='CEO' || ME.role==='HOD' || !(ME.sites && ME.sites.length);
 }
 
+// Some project names in the tracker sheet carry a roman-numeral/number suffix
+// (e.g. "MITHILA-I") that doesn't appear in the roster's site list ("MITHILA").
+// Normalize both sides before comparing so these still match.
+function ccNormalizeSite(s){
+  return String(s||'').trim().toUpperCase().replace(/[-\s]+(I|II|III|IV|V|\d+)$/,'');
+}
+
 function enrichReadinessRows(){
   const today = new Date(); today.setHours(0,0,0,0);
   const parseDate = s => { if(!s) return null; const d=new Date(s+'T00:00:00'); return isNaN(d)?null:d; };
@@ -1000,12 +1007,12 @@ function setupReadinessScopeUI(){
 function renderReadinessTable(){
   let rows = READINESS_RAW || [];
   if(!isUnrestrictedReadiness()){
-    rows = rows.filter(r => (ME.sites||[]).includes(r.project));
+    rows = rows.filter(r => (ME.sites||[]).some(s => ccNormalizeSite(s)===ccNormalizeSite(r.project)));
   }
   const fProject = document.getElementById('fReadinessProject').value;
   const fCategory = document.getElementById('fReadinessCategory').value;
   const fStatus = document.getElementById('fReadinessStatus').value;
-  if(fProject) rows = rows.filter(r=>r.project===fProject);
+  if(fProject) rows = rows.filter(r=>ccNormalizeSite(r.project)===ccNormalizeSite(fProject));
   if(fCategory) rows = rows.filter(r=>r.category===fCategory);
 
   const total = rows.length;
