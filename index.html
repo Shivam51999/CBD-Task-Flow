@@ -1380,13 +1380,23 @@ function enrichReadinessRows(){
   });
 }
 
+let READINESS_UI_SETUP = false, CC_UI_SETUP = false;
+
 async function loadReadinessTab(){
   const showFull = isUnrestrictedReadiness();
   document.getElementById('readinessSimpleView').style.display = showFull ? 'none' : 'block';
   document.getElementById('readinessFullView').style.display = showFull ? 'block' : 'none';
 
+  // Data may already be loaded (digest / focus panel fetch it at login) —
+  // the filter UI still needs its one-time setup.
   if(READINESS_RAW){
-    if(showFull) ccRenderAll(); else renderReadinessTable();
+    if(showFull){
+      if(!CC_UI_SETUP){ ccSetupFilters(); CC_UI_SETUP = true; }
+      ccRenderAll();
+    } else {
+      if(!READINESS_UI_SETUP){ setupReadinessScopeUI(); READINESS_UI_SETUP = true; }
+      renderReadinessTable();
+    }
     return;
   }
   const loadingTarget = showFull ? 'ccRiskBody' : 'readinessBody';
@@ -1397,10 +1407,10 @@ async function loadReadinessTab(){
     READINESS_RAW = json.rows || [];
     enrichReadinessRows();
     if(showFull){
-      ccSetupFilters();
+      if(!CC_UI_SETUP){ ccSetupFilters(); CC_UI_SETUP = true; }
       ccRenderAll();
     } else {
-      setupReadinessScopeUI();
+      if(!READINESS_UI_SETUP){ setupReadinessScopeUI(); READINESS_UI_SETUP = true; }
       renderReadinessTable();
     }
   } catch(err){
@@ -1432,18 +1442,33 @@ function setupReadinessScopeUI(){
   statusSel.addEventListener('change', renderReadinessTable);
 
   const teamSel = document.getElementById('fReadinessTeam');
-  teamSel.value = TEAM_LENS;   // pre-set from the member's role (Estimation/CBD)
-  document.getElementById('readinessDaysTh').textContent = lensDeadlineLabel();
-  teamSel.addEventListener('change', ()=>{
-    TEAM_LENS = teamSel.value;
-    enrichReadinessRows();          // recompute days/status against the team's deadline
+  if(!isUnrestrictedReadiness()){
+    // Members are locked to their own team's view — no team switcher, no
+    // other-team columns. TEAM_LENS was already set from their role at login.
+    teamSel.style.display = 'none';
+    const dlColName = TEAM_LENS==='Estimation' ? 'Planning Deadline' : TEAM_LENS==='Contract' ? 'Contract Deadline' : 'Start Date';
+    document.querySelector('#readinessTable thead tr').innerHTML =
+      '<th id="readinessDaysTh">'+lensDeadlineLabel()+'</th><th>Project</th><th>Wing</th><th>Category</th><th>Scope of Work</th>'+
+      '<th>'+dlColName+'</th><th>% Done</th><th>Status</th><th></th>';
+  } else {
+    teamSel.value = TEAM_LENS;
     document.getElementById('readinessDaysTh').textContent = lensDeadlineLabel();
-    renderReadinessTable();
-  });
+    teamSel.addEventListener('change', ()=>{
+      TEAM_LENS = teamSel.value;
+      enrichReadinessRows();          // recompute days/status against the team's deadline
+      document.getElementById('readinessDaysTh').textContent = lensDeadlineLabel();
+      renderReadinessTable();
+    });
+  }
 }
 
 function renderReadinessTable(){
   let rows = READINESS_RAW || [];
+  if(!rows.length){
+    document.getElementById('readinessKpis').innerHTML = '';
+    document.getElementById('readinessBody').innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--red);padding:20px;">The readiness feed returned 0 items. This usually means the tracker column mapping in Apps Script (TRACKER.HEADERS) doesn\'t match your sheet\'s headers yet — run debugListAllHeaders() there and adjust, then redeploy.</td></tr>';
+    return;
+  }
   if(!isUnrestrictedReadiness()){
     rows = rows.filter(r => (ME.sites||[]).some(s => ccNormalizeSite(s)===ccNormalizeSite(r.project)));
   }
@@ -1468,10 +1493,15 @@ function renderReadinessTable(){
   let displayRows = fStatus ? rows.filter(r=>r._status===fStatus) : rows.filter(r=>r._status==='Slipping'||r._status==='Critical'||r._status==='Watch');
   displayRows = displayRows.slice().sort((a,b)=>(a._days??9999)-(b._days??9999)).slice(0,150);
 
+  const memberLens = !isUnrestrictedReadiness() && TEAM_LENS;
   document.getElementById('readinessBody').innerHTML = displayRows.map(r=>{
     const daysLabel = r._days===null?'—':(r._days<0?Math.abs(r._days)+'d overdue':r._days+'d');
     const rid = readinessRowId(r);
-    return '<tr><td class="mono">'+daysLabel+'</td><td>'+r.project+'</td><td>'+r.wing+'</td><td>'+(r.category||'—')+'</td><td>'+r.scope_of_work+'</td><td class="mono">'+lensDate(r)+'</td><td>'+Math.round(r.estimation_marks||0)+'%</td><td>'+Math.round(r.contract_marks||0)+'%</td><td>'+r._status+'</td><td><button class="ghost-btn" data-rid="'+rid+'" onclick="openReadinessEdit(this)">Update</button></td></tr>';
+    if(memberLens){
+      const marks = TEAM_LENS==='Estimation' ? r.estimation_marks : r.contract_marks;
+      return '<tr><td class="mono">'+daysLabel+'</td><td>'+esc(r.project)+'</td><td>'+esc(r.wing)+'</td><td>'+esc(r.category||'—')+'</td><td>'+esc(r.scope_of_work)+'</td><td class="mono">'+lensDate(r)+'</td><td>'+Math.round(marks||0)+'%</td><td>'+r._status+'</td><td><button class="ghost-btn" data-rid="'+rid+'" onclick="openReadinessEdit(this)">Update</button></td></tr>';
+    }
+    return '<tr><td class="mono">'+daysLabel+'</td><td>'+esc(r.project)+'</td><td>'+esc(r.wing)+'</td><td>'+esc(r.category||'—')+'</td><td>'+esc(r.scope_of_work)+'</td><td class="mono">'+lensDate(r)+'</td><td>'+Math.round(r.estimation_marks||0)+'%</td><td>'+Math.round(r.contract_marks||0)+'%</td><td>'+r._status+'</td><td><button class="ghost-btn" data-rid="'+rid+'" onclick="openReadinessEdit(this)">Update</button></td></tr>';
   }).join('') || '<tr><td colspan="10" style="text-align:center;color:#999;padding:16px;">No items match this filter 🎉</td></tr>';
 }
 
