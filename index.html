@@ -193,6 +193,14 @@
   <div class="tabs" id="tabBar"></div>
 
   <!-- CEO OVERVIEW -->
+  <div class="tab-panel" id="tab-digest">
+    <div class="card">
+      <h3 id="digestTitle">📰 Daily Digest</h3>
+      <p class="hint" id="digestDate"></p>
+      <div id="digestContent"><span class="hint">Loading…</span></div>
+    </div>
+  </div>
+
   <div class="tab-panel" id="tab-overview">
     <div class="card">
       <h3>Organization Overview</h3>
@@ -462,7 +470,8 @@
   <div class="tab-panel" id="tab-mytasks">
     <div class="card" id="focusCard">
       <h3>🎯 Today's Focus</h3>
-      <p class="hint">Ranked automatically — overdue tasks first, then tasks due within 3 days, then Critical / Slipping readiness items on your sites.</p>
+      <div id="focusSites" style="margin:6px 0 10px;"></div>
+      <p class="hint" id="focusHint">Ranked automatically — overdue tasks first, then tasks due within 3 days, then your team's sheet deadlines within the next 20 days on your projects.</p>
       <div id="focusList"><span class="hint">Loading…</span></div>
     </div>
     <div class="card">
@@ -663,9 +672,9 @@ function workingDaysElapsed(){
 // ---------- TABS ----------
 function setupTabs(){
   const tabBar = document.getElementById('tabBar');
-  const managerTabs = [{id:'team',label:'Team Roster'},{id:'assign',label:'Assign Task'},{id:'alltasks',label:'All Tasks'},{id:'feed',label:'Activity Feed'},{id:'readiness',label:'Project Readiness'},{id:'approvals',label:'Readiness Approvals'}];
+  const managerTabs = [{id:'digest',label:'Daily Digest'},{id:'team',label:'Team Roster'},{id:'assign',label:'Assign Task'},{id:'alltasks',label:'All Tasks'},{id:'feed',label:'Activity Feed'},{id:'readiness',label:'Project Readiness'},{id:'approvals',label:'Readiness Approvals'}];
   const ceoTabs = [{id:'overview',label:'Overview'}, ...managerTabs, {id:'performance',label:'Performance & P&L'}];
-  const memberTabs = [{id:'mytasks',label:'My Tasks'},{id:'readiness',label:'Project Readiness'},{id:'log',label:'Daily Activity Log'},{id:'myperf',label:'My Performance'}];
+  const memberTabs = [{id:'digest',label:'Daily Digest'},{id:'mytasks',label:'My Tasks'},{id:'readiness',label:'Project Readiness'},{id:'log',label:'Daily Activity Log'},{id:'myperf',label:'My Performance'}];
   const tabs = ME.role==='CEO' ? ceoTabs : (ME.role==='HOD' ? managerTabs : memberTabs);
   tabBar.innerHTML = tabs.map((t,i)=>'<button class="tab-btn'+(i===0?' active':'')+'" data-tab="'+t.id+'">'+t.label+'</button>').join('');
   document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
@@ -677,6 +686,7 @@ function setupTabs(){
       btn.classList.add('active'); document.getElementById('tab-'+btn.dataset.tab).classList.add('active');
       if(btn.dataset.tab === 'readiness') loadReadinessTab();
       if(btn.dataset.tab === 'approvals') loadApprovalsTab();
+      if(btn.dataset.tab === 'digest') renderDigest();
     });
   });
 }
@@ -802,7 +812,7 @@ async function renderKPIsManager(){
   ].map(([lbl,val,cls])=>'<div class="kpi"><div class="val '+cls+'"'+(cls==='pendingreview'?'':'')+'>'+val+'</div><div class="lbl">'+lbl+'</div></div>').join('');
 }
 
-async function renderHOD(){ await renderManagerCommon(); await renderKPIsManager(); }
+async function renderHOD(){ await renderManagerCommon(); await renderKPIsManager(); await renderDigest(); }
 
 // ============== CEO LOGIC ==============
 function ccExtractMarks(proposedJson){
@@ -1013,29 +1023,187 @@ async function appendReadinessFocus(box, hadTasks){
     }
     const mine = READINESS_RAW.filter(r =>
       (ME.sites||[]).some(s => ccNormalizeSite(s)===ccNormalizeSite(r.project)) &&
-      (r._status==='Slipping' || r._status==='Critical') && !r._fullyReady
-    ).sort((a,b)=>(a._days??9999)-(b._days??9999)).slice(0,8);
+      !r._fullyReady && r._days!==null && r._days<=20   // 20-day advance notice window (incl. overdue)
+    ).sort((a,b)=>(a._days??9999)-(b._days??9999)).slice(0,10);
     if(!mine.length){
-      if(!hadTasks) box.innerHTML = '<span class="hint">Nothing urgent right now — all clear on tasks and readiness 🎉</span>';
+      if(!hadTasks) box.innerHTML = '<span class="hint">Nothing urgent right now — all clear on tasks and deadlines 🎉</span>';
       else box.querySelectorAll('.hint').forEach(h=>{ if(h.textContent.includes('Checking readiness')) h.remove(); });
       return;
     }
+    const dlWord = TEAM_LENS==='Estimation' ? 'planning deadline' : TEAM_LENS==='Contract' ? 'contract deadline' : 'start';
     const readyHtml = mine.map(r=>{
-      const daysLabel = r._days===null?'—':(r._days<0?Math.abs(r._days)+'d overdue start':r._days+'d to start');
-      return focusItemHtml('f-readiness', r._status==='Slipping'?'SLIPPING':'CRITICAL',
+      const daysLabel = r._days<0 ? Math.abs(r._days)+'d past '+dlWord : r._days===0 ? dlWord+' TODAY' : r._days+'d to '+dlWord;
+      const marks = TEAM_LENS==='Estimation' ? Math.round(r.estimation_marks||0)+'% done'
+                  : TEAM_LENS==='Contract'   ? Math.round(r.contract_marks||0)+'% done'
+                  : 'Est '+Math.round(r.estimation_marks||0)+'% · Contract '+Math.round(r.contract_marks||0)+'%';
+      return focusItemHtml('f-readiness', r._days<0 ? 'OVERDUE' : 'DUE ≤20D',
         esc(r.project)+' / '+esc(r.wing)+' — '+esc(r.scope_of_work),
-        'Est '+Math.round(r.estimation_marks||0)+'% · Contract '+Math.round(r.contract_marks||0)+'%', daysLabel);
+        marks, daysLabel);
     }).join('');
     if(hadTasks) box.innerHTML += readyHtml;
     else box.innerHTML = readyHtml;
   } catch(e){ /* readiness feed unavailable — task items already shown */ }
 }
 
+// ============== DAILY DIGEST (in-portal, replaces the email digest) ==============
+async function ensureReadinessLoaded(){
+  if(READINESS_RAW) return;
+  try{
+    const res = await fetch(CBD_FEED_URL, { cache:'no-store' });
+    const json = await res.json();
+    READINESS_RAW = json.rows || [];
+    enrichReadinessRows();
+  } catch(e){ READINESS_RAW = READINESS_RAW || []; }
+}
+function digestSection(title, color, itemsHtml, emptyText){
+  if(!itemsHtml) return emptyText ? '<h3 style="margin:18px 0 8px;color:'+color+';">'+title+'</h3><p class="hint">'+emptyText+'</p>' : '';
+  return '<h3 style="margin:18px 0 8px;color:'+color+';">'+title+'</h3>'+itemsHtml;
+}
+async function renderDigest(){
+  const dateEl = document.getElementById('digestDate');
+  dateEl.textContent = new Date().toLocaleDateString('en-GB',{weekday:'long',day:'2-digit',month:'long',year:'numeric'});
+  if(ME.role==='CEO' || ME.role==='HOD') await renderDigestManager();
+  else await renderDigestMember();
+}
+
+async function renderDigestMember(){
+  const box = document.getElementById('digestContent');
+  box.innerHTML = '<span class="hint"><span class="spinner-inline"></span> Building your digest…</span>';
+  document.getElementById('digestTitle').textContent = '📰 Daily Digest — Mangalam Namaste, ' + (ME.name||'').split(' ')[0] + '!';
+  try{
+    if(!MY_TASKS_CACHE.length) MY_TASKS_CACHE = await api('getMyTasks', {});
+    const feed = await api('getMyFeed', {});
+    await ensureReadinessLoaded();
+
+    const todayStr = new Date().toISOString().slice(0,10);
+    const soonStr = new Date(Date.now()+3*86400000).toISOString().slice(0,10);
+    const open = MY_TASKS_CACHE.filter(t=>t.Status!=='Done');
+    const overdue = open.filter(t=>t.DueDate && t.DueDate<todayStr).sort((a,b)=>a.DueDate.localeCompare(b.DueDate));
+    const dueSoon = open.filter(t=>t.DueDate && t.DueDate>=todayStr && t.DueDate<=soonStr);
+    const blocked = open.filter(t=>t.Status==='Blocked');
+    const pendingReview = open.filter(t=>t.Status==='Pending Review');
+    const loggedToday = (feed||[]).some(r=>String(r.Date).slice(0,10)===todayStr);
+
+    const deadlines = (READINESS_RAW||[]).filter(r =>
+      (ME.sites||[]).some(s => ccNormalizeSite(s)===ccNormalizeSite(r.project)) &&
+      !r._fullyReady && r._days!==null && r._days<=20
+    ).sort((a,b)=>(a._days??9999)-(b._days??9999)).slice(0,15);
+    const dlWord = TEAM_LENS==='Estimation' ? 'planning deadline' : TEAM_LENS==='Contract' ? 'contract deadline' : 'start';
+    const teamWord = TEAM_LENS==='Estimation' ? 'Estimation planning deadlines' : TEAM_LENS==='Contract' ? 'Contract deadlines' : 'Deadlines';
+
+    let html = '';
+    // one-line summary
+    html += '<div class="kpi-row" style="grid-template-columns:repeat(4,1fr);">' + [
+      ['Overdue Tasks', overdue.length, overdue.length?'red':''],
+      ['Due ≤3 Days', dueSoon.length, dueSoon.length?'amber':''],
+      ['Deadlines ≤20d', deadlines.length, deadlines.length?'red':''],
+      ['Logged Today', loggedToday?'Yes':'No', loggedToday?'green':'red']
+    ].map(([l,v,c])=>'<div class="kpi"><div class="val '+c+'">'+v+'</div><div class="lbl">'+l+'</div></div>').join('') + '</div>';
+
+    html += digestSection('⛔ Overdue tasks ('+overdue.length+')', 'var(--red)',
+      overdue.map(t=>{
+        const days = Math.round((new Date(todayStr)-new Date(t.DueDate))/86400000);
+        return focusItemHtml('f-overdue','OVERDUE', esc(t.Title), esc(t.Site)+' · '+esc(t.Priority), days+'d late');
+      }).join(''));
+    html += digestSection('⏳ Tasks due within 3 days ('+dueSoon.length+')', 'var(--amber, #C97B2E)',
+      dueSoon.map(t=>focusItemHtml('f-duesoon','DUE SOON', esc(t.Title), esc(t.Site)+' · '+esc(t.Priority), t.DueDate===todayStr?'today':t.DueDate)).join(''));
+    html += digestSection('🚧 Blocked ('+blocked.length+')', 'var(--charcoal-deep, #333)',
+      blocked.map(t=>focusItemHtml('f-overdue','BLOCKED', esc(t.Title), t.BlockedReason?('⛔ '+esc(t.BlockedReason)):'', esc(t.Site))).join(''));
+    html += digestSection('🟡 Waiting on HOD approval ('+pendingReview.length+')', '#C97B2E',
+      pendingReview.map(t=>focusItemHtml('f-duesoon','IN REVIEW', esc(t.Title), esc(t.Site), t.DueDate||'')).join(''));
+    html += digestSection('📅 Your '+teamWord+' — next 20 days ('+deadlines.length+')', '#5E35B1',
+      deadlines.map(r=>{
+        const marks = TEAM_LENS==='Estimation' ? Math.round(r.estimation_marks||0) : TEAM_LENS==='Contract' ? Math.round(r.contract_marks||0) : Math.round(((r.estimation_marks||0)+(r.contract_marks||0))/2);
+        const daysLabel = r._days<0 ? Math.abs(r._days)+'d past '+dlWord : r._days===0 ? dlWord+' TODAY' : r._days+'d to '+dlWord;
+        return focusItemHtml('f-readiness', r._days<0?'OVERDUE':'DUE ≤20D', esc(r.project)+' / '+esc(r.wing)+' — '+esc(r.scope_of_work), marks+'% done', daysLabel);
+      }).join(''));
+
+    if(!overdue.length && !dueSoon.length && !blocked.length && !deadlines.length){
+      html += '<p style="margin-top:14px;color:var(--green);font-weight:600;">✅ Nothing urgent today — clean board. Plan ahead and log your activity.</p>';
+    }
+    if(!loggedToday){
+      html += '<p class="hint" style="margin-top:14px;">✍️ You haven\'t logged today\'s activity yet — it counts toward your consistency score.</p>';
+    }
+    box.innerHTML = html;
+  } catch(err){ box.innerHTML = '<span style="color:var(--red);">'+esc(err.message)+'</span>'; }
+}
+
+async function renderDigestManager(){
+  const box = document.getElementById('digestContent');
+  box.innerHTML = '<span class="hint"><span class="spinner-inline"></span> Building team digest…</span>';
+  document.getElementById('digestTitle').textContent = '📰 Daily Digest — CBD & Estimation Team';
+  try{
+    const tasks = ALL_TASKS_CACHE.length ? ALL_TASKS_CACHE : (ALL_TASKS_CACHE = await api('getAllTasks', {}));
+    await ensureReadinessLoaded();
+    const todayStr = new Date().toISOString().slice(0,10);
+    const cutStr = new Date(Date.now()+20*86400000).toISOString().slice(0,10);
+    const nameOf = e => { const m = ALL_MEMBERS.find(x=>x.email===e); return m?m.name:e; };
+
+    const open = tasks.filter(t=>t.Status!=='Done');
+    const pendingReview = open.filter(t=>t.Status==='Pending Review');
+    const blocked = open.filter(t=>t.Status==='Blocked');
+    const overdue = open.filter(t=>t.DueDate && t.DueDate<todayStr);
+    const escalated = overdue.filter(t=> Math.round((new Date(todayStr)-new Date(t.DueDate))/86400000) >= 7);
+    const byPerson = {};
+    overdue.forEach(t=>{ const n=nameOf(t.AssignedToEmail); (byPerson[n]=byPerson[n]||[]).push(t); });
+
+    const estDue = (READINESS_RAW||[]).filter(r=> r.planning_deadline && r.planning_deadline<=cutStr && (r.estimation_marks==null || r.estimation_marks<100));
+    const conDue = (READINESS_RAW||[]).filter(r=> r.contract_deadline && r.contract_deadline<=cutStr && (r.contract_marks==null || r.contract_marks<100));
+
+    let html = '<div class="kpi-row" style="grid-template-columns:repeat(5,1fr);">' + [
+      ['Pending Review', pendingReview.length, pendingReview.length?'amber':''],
+      ['Overdue Tasks', overdue.length, overdue.length?'red':''],
+      ['Escalated ≥7d', escalated.length, escalated.length?'red':''],
+      ['Est. Deadlines ≤20d', estDue.length, estDue.length?'red':''],
+      ['Contract Deadlines ≤20d', conDue.length, conDue.length?'red':'']
+    ].map(([l,v,c])=>'<div class="kpi"><div class="val '+c+'">'+v+'</div><div class="lbl">'+l+'</div></div>').join('') + '</div>';
+
+    html += digestSection('🟡 Awaiting your review ('+pendingReview.length+')', '#C97B2E',
+      pendingReview.map(t=>focusItemHtml('f-duesoon','REVIEW', esc(t.Title), esc(t.Site)+' · '+esc(nameOf(t.AssignedToEmail)), t.DueDate||'')).join(''));
+
+    html += digestSection('⛔ Overdue by person', 'var(--red)',
+      Object.keys(byPerson).sort((a,b)=>byPerson[b].length-byPerson[a].length).map(n=>
+        '<p style="margin:10px 0 2px;font-weight:600;">'+esc(n)+' — '+byPerson[n].length+' overdue</p>' +
+        byPerson[n].map(t=>{
+          const days = Math.round((new Date(todayStr)-new Date(t.DueDate))/86400000);
+          return focusItemHtml(days>=7?'f-overdue':'f-duesoon', days>=7?'ESC '+days+'D':days+'D LATE', esc(t.Title), esc(t.Site)+' · '+esc(t.Priority), 'due '+t.DueDate);
+        }).join('')
+      ).join(''));
+
+    html += digestSection('🚧 Blocked ('+blocked.length+')', 'var(--charcoal-deep, #333)',
+      blocked.map(t=>focusItemHtml('f-overdue','BLOCKED', esc(t.Title), (t.BlockedReason?'⛔ '+esc(t.BlockedReason)+' · ':'')+esc(nameOf(t.AssignedToEmail)), esc(t.Site))).join(''));
+
+    const worst = estDue.map(r=>({t:'EST', r, dl:r.planning_deadline, marks:r.estimation_marks}))
+      .concat(conDue.map(r=>({t:'CON', r, dl:r.contract_deadline, marks:r.contract_marks})))
+      .sort((a,b)=>a.dl.localeCompare(b.dl)).slice(0,15);
+    html += digestSection('📅 Sheet deadlines — next 20 days (Est: '+estDue.length+' · Contracts: '+conDue.length+')', '#5E35B1',
+      worst.map(w=>focusItemHtml('f-readiness', w.t==='EST'?'ESTIMATION':'CONTRACTS',
+        esc(w.r.project)+' / '+esc(w.r.wing)+' — '+esc(w.r.scope_of_work),
+        Math.round(w.marks||0)+'% done', (w.dl<todayStr?'⛔ ':'')+w.dl)).join(''));
+
+    if(!pendingReview.length && !overdue.length && !blocked.length && !worst.length){
+      html += '<p style="margin-top:14px;color:var(--green);font-weight:600;">✅ Clean board — nothing pending, overdue, or approaching deadline.</p>';
+    }
+    box.innerHTML = html;
+  } catch(err){ box.innerHTML = '<span style="color:var(--red);">'+esc(err.message)+'</span>'; }
+}
+
 // ============== MEMBER LOGIC (Estimation / CBD) ==============
 async function renderMember(){
+  // Auto team lens: Estimation members live by the planning deadline,
+  // CBD (contracts) members by the contract deadline — no manual filter needed.
+  TEAM_LENS = ME.role==='Estimation' ? 'Estimation' : (ME.role==='CBD' ? 'Contract' : '');
+  // Show the member exactly which projects they're assigned to
+  document.getElementById('focusSites').innerHTML = (ME.sites||[]).length
+    ? '<span class="hint" style="margin:0 6px 0 0;">Your projects:</span>' + (ME.sites||[]).map(s=>'<span class="chip on" style="cursor:default;">'+esc(s)+'</span>').join(' ')
+    : '<span class="hint" style="color:var(--red);">No projects assigned yet — ask your HOD to assign your sites.</span>';
+  const fh = document.getElementById('focusHint');
+  if(TEAM_LENS) fh.textContent = 'Ranked automatically — overdue tasks first, then tasks due within 3 days, then your ' +
+    (TEAM_LENS==='Estimation' ? 'Estimation planning deadlines' : 'Contract deadlines') + ' within the next 20 days on your projects.';
   document.getElementById('logSite').innerHTML = (ME.sites||[]).map(s=>'<option>'+s+'</option>').join('') || '<option value="">No sites assigned</option>';
   document.getElementById('logDate').value = new Date().toISOString().slice(0,10);
   await renderMyTasks(); renderTodaysFocus(); await populateMyTaskDropdown(); await renderMyFeed(); await renderKPIsMember(); await renderMyPerformance();
+  await renderDigest();   // digest is the landing tab — build it once data is in
   document.getElementById('logSubmitBtn').addEventListener('click', submitActivity);
 }
 
@@ -1264,6 +1432,8 @@ function setupReadinessScopeUI(){
   statusSel.addEventListener('change', renderReadinessTable);
 
   const teamSel = document.getElementById('fReadinessTeam');
+  teamSel.value = TEAM_LENS;   // pre-set from the member's role (Estimation/CBD)
+  document.getElementById('readinessDaysTh').textContent = lensDeadlineLabel();
   teamSel.addEventListener('change', ()=>{
     TEAM_LENS = teamSel.value;
     enrichReadinessRows();          // recompute days/status against the team's deadline
