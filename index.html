@@ -96,6 +96,15 @@
   select.status-select{font-size:11.5px;padding:4px 6px;}
   .tag{display:inline-block;padding:2px 9px;border-radius:20px;font-size:10px;font-family:'IBM Plex Mono',monospace;font-weight:600;}
   .tag-done{background:var(--green-soft);color:var(--green);}
+  .focus-item{display:flex;align-items:center;gap:10px;padding:9px 12px;border:1px solid var(--line);border-radius:8px;margin-bottom:7px;font-size:12.5px;background:#fff;}
+  .focus-item .f-badge{flex-shrink:0;font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;}
+  .f-overdue{background:var(--red-soft);color:var(--red);} .f-duesoon{background:#FFF3E0;color:#C97B2E;} .f-readiness{background:#EDE7F6;color:#5E35B1;}
+  .focus-item .f-meta{color:var(--ink-soft);font-size:11px;margin-left:auto;flex-shrink:0;font-family:'IBM Plex Mono',monospace;}
+  .history-link{font-size:10.5px;color:var(--ink-soft);cursor:pointer;text-decoration:underline dotted;margin-left:6px;white-space:nowrap;}
+  .history-link:hover{color:var(--red);}
+  .history-row td{background:#FAFAF7;font-size:11.5px;padding:8px 12px;}
+  .history-row table td{padding:3px 10px 3px 0;border:none;}
+  .blocked-note{font-size:11px;color:var(--red);margin-top:2px;}
   .filter-bar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;}
   .filter-bar select,.filter-bar input{font-size:12px;padding:6px 9px;}
   .score-bar{width:70px;height:7px;background:#EFEFEF;border-radius:4px;overflow:hidden;display:inline-block;vertical-align:middle;margin-right:6px;}
@@ -431,7 +440,7 @@
   <div class="tab-panel" id="tab-performance">
     <div class="card">
       <h3>Team Performance & P&L (Month to Date)</h3>
-      <p class="hint">Score = 40% completion rate + 30% on-time rate + 30% daily-activity consistency. Cost is prorated from Annual CTC. This tab and all figures on it are visible only to the CEO role — HOD cannot see this.</p>
+      <p class="hint">Score = 30% task completion + 20% on-time + 20% daily-activity consistency (working days, Sundays excluded) + 30% approved readiness marks. Components with no data yet are excluded and their weight redistributed — "—" means insufficient data, not zero. Cost is prorated from Annual CTC. This tab is visible only to the CEO role — HOD cannot see this.</p>
       <div class="kpi-row" id="perfKpiRow"></div>
       <div class="table-wrap"><table id="perfTable"><thead><tr>
         <th>Name</th><th>Role</th><th>Score</th><th>Completion</th><th>On-Time</th><th>Consistency</th><th>Readiness Approved</th><th>Annual CTC (₹)</th><th>Cost MTD (₹)</th><th>Value Delivered (₹)</th><th>Shortfall (₹)</th>
@@ -441,6 +450,11 @@
 
   <!-- MEMBER TABS -->
   <div class="tab-panel" id="tab-mytasks">
+    <div class="card" id="focusCard">
+      <h3>🎯 Today's Focus</h3>
+      <p class="hint">Ranked automatically — overdue tasks first, then tasks due within 3 days, then Critical / Slipping readiness items on your sites.</p>
+      <div id="focusList"><span class="hint">Loading…</span></div>
+    </div>
     <div class="card">
       <h3>My Tasks</h3>
       <p class="hint">Mark a task "Pending Review" when finished — your HOD or CEO approves it to mark it Done.</p>
@@ -478,7 +492,7 @@
   <div class="tab-panel" id="tab-myperf">
     <div class="card">
       <h3>My Performance Score</h3>
-      <p class="hint">This is how your manager sees your delivery. No cost or salary figures are ever shown to you or anyone but the CEO.</p>
+      <p class="hint">This is how your manager sees your delivery. Consistency counts working days only (Sundays excluded). "—" means not enough data yet for that component — it doesn't count against you. No cost or salary figures are ever shown to you or anyone but the CEO.</p>
       <div class="kpi-row" id="myPerfKpis" style="grid-template-columns:repeat(5,1fr);"></div>
     </div>
   </div>
@@ -618,10 +632,21 @@ function siteChips(id, preselected=[]){
 }
 function getSelectedChips(id){ return [...document.querySelectorAll('#'+id+' .chip.on')].map(c=>c.dataset.site); }
 function scoreBar(score){
+  if(score===null||score===undefined||isNaN(score)) return '<span style="color:#999;font-size:11px;">— no data</span>';
   let color='#E2231A'; if(score>=80) color='#2E7D4F'; else if(score>=50) color='#C97B2E';
   return '<span class="score-bar"><i style="width:'+score+'%;background:'+color+'"></i></span>'+Math.round(score)+'%';
 }
+function pctOrDash(v){ return (v===null||v===undefined) ? '—' : Math.round(v*100)+'%'; }
 function inr(n){ return '₹'+Math.round(n||0).toLocaleString('en-IN'); }
+function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+// Working days elapsed this month (Sundays excluded — weekly off)
+function workingDaysElapsed(){
+  const now = new Date(); let count = 0;
+  for(let d=1; d<=now.getDate(); d++){
+    if(new Date(now.getFullYear(), now.getMonth(), d).getDay() !== 0) count++;
+  }
+  return Math.max(1, count);
+}
 
 // ---------- TABS ----------
 function setupTabs(){
@@ -721,15 +746,21 @@ async function renderAllTasks(){
   rows.sort((a,b)=>(a.DueDate||'').localeCompare(b.DueDate||''));
   document.getElementById('allTasksBody').innerHTML = rows.map(r=>{
     const assignee = ALL_MEMBERS.find(m=>m.email===r.AssignedToEmail);
-    return '<tr class="'+(r.Status==='Pending Review'?'pending-review':'')+'"><td>'+r.Title+'</td><td>'+r.Site+'</td><td>'+(assignee?assignee.name:r.AssignedToEmail)+'</td><td>'+r.Priority+'</td><td>'+(r.DueDate||'—')+'</td>'+
-    '<td><select class="status-select" data-id="'+r.ID+'">'+
+    const blockedNote = (r.Status==='Blocked' && r.BlockedReason) ? '<div class="blocked-note">⛔ '+esc(r.BlockedReason)+'</div>' : '';
+    return '<tr class="'+(r.Status==='Pending Review'?'pending-review':'')+'"><td>'+esc(r.Title)+' <span class="history-link" data-id="'+esc(r.ID)+'" onclick="toggleTaskHistory(this)">history</span>'+blockedNote+'</td><td>'+esc(r.Site)+'</td><td>'+esc(assignee?assignee.name:r.AssignedToEmail)+'</td><td>'+esc(r.Priority)+'</td><td>'+(r.DueDate||'—')+'</td>'+
+    '<td><select class="status-select" data-id="'+esc(r.ID)+'">'+
       ['Not Started','In Progress','Pending Review','Done','Blocked'].map(s=>'<option'+(s===r.Status?' selected':'')+'>'+s+'</option>').join('')+
     '</select></td></tr>';
   }).join('') || '<tr><td colspan="6" style="text-align:center;color:#999;padding:16px;">No tasks yet</td></tr>';
 
   document.querySelectorAll('#allTasksBody .status-select').forEach(sel=>{
     sel.addEventListener('change', async ()=>{
-      try{ await api('updateTaskStatus', { taskId: sel.dataset.id, status: sel.value }); }
+      let blockedReason = '';
+      if(sel.value==='Blocked'){
+        blockedReason = (prompt('What is blocking this task?\nMention what it\'s waiting on and who owns the blocker — this is required.')||'').trim();
+        if(!blockedReason){ await renderAllTasks(); return; } // cancelled — revert
+      }
+      try{ await api('updateTaskStatus', { taskId: sel.dataset.id, status: sel.value, blockedReason }); await renderAllTasks(); }
       catch(err){ alert(err.message); await renderAllTasks(); }
     });
   });
@@ -776,28 +807,37 @@ function computeScore(email, tasks, activity, approvals){
   const monthStart = todayStr.slice(0,8)+'01';
   const myTasks = tasks.filter(t=>t.AssignedToEmail===email);
   const doneTasks = myTasks.filter(t=>t.Status==='Done');
-  const completionRate = myTasks.length ? doneTasks.length/myTasks.length : 1;
+  // null = "no data yet", NOT 100%. A person with zero tasks no longer scores as perfect.
+  const completionRate = myTasks.length ? doneTasks.length/myTasks.length : null;
   const onTimeDone = doneTasks.filter(t=> !t.DueDate || (t.ApprovedAt && String(t.ApprovedAt).slice(0,10) <= t.DueDate));
-  const onTimeRate = doneTasks.length ? onTimeDone.length/doneTasks.length : 1;
-  const daysElapsed = new Date().getDate();
+  const onTimeRate = doneTasks.length ? onTimeDone.length/doneTasks.length : null;
+  // Consistency measured against working days only (Sundays excluded)
+  const workDays = workingDaysElapsed();
   const myActivity = activity.filter(a=>a.Email===email && String(a.Date)>=monthStart);
-  const distinctDays = new Set(myActivity.map(a=>String(a.Date))).size;
-  const consistency = Math.min(1, distinctDays/Math.max(1,daysElapsed));
+  const distinctDays = new Set(myActivity.map(a=>String(a.Date).slice(0,10))).size;
+  const consistency = Math.min(1, distinctDays/workDays);
 
   approvals = approvals || [];
   const myApproved = approvals.filter(a => a.SubmittedByEmail===email && a.Status==='Approved' && String(a.SubmittedAt).slice(0,10)>=monthStart);
   const marksValues = myApproved.map(a=>ccExtractMarks(a.ProposedUpdates)).filter(v=>v!==null && v!==undefined);
   const readinessScore = marksValues.length ? (marksValues.reduce((a,b)=>a+b,0)/marksValues.length)/100 : null;
 
+  // Weighted average over AVAILABLE components only — missing components have their
+  // weight redistributed rather than counted as 0% or 100%.
   const W = { completion:0.3, onTime:0.2, consistency:0.2, readiness:0.3 };
-  let score;
-  if(readinessScore===null){
-    const totalOther = W.completion+W.onTime+W.consistency; // redistribute readiness weight — no approved submissions yet this month
-    score = Math.round(100*(W.completion/totalOther*completionRate + W.onTime/totalOther*onTimeRate + W.consistency/totalOther*consistency));
-  } else {
-    score = Math.round(100*(W.completion*completionRate + W.onTime*onTimeRate + W.consistency*consistency + W.readiness*readinessScore));
+  const comps = [];
+  if(completionRate!==null) comps.push([W.completion, completionRate]);
+  if(onTimeRate!==null)     comps.push([W.onTime, onTimeRate]);
+  comps.push([W.consistency, consistency]);
+  if(readinessScore!==null) comps.push([W.readiness, readinessScore]);
+  // No signal at all (no tasks, no readiness approvals, no activity) → score is null, shown as "—"
+  const hasSignal = completionRate!==null || readinessScore!==null || distinctDays>0;
+  let score = null;
+  if(hasSignal){
+    const wSum = comps.reduce((a,c)=>a+c[0],0);
+    score = Math.round(100 * comps.reduce((a,c)=>a+c[0]*c[1],0) / wSum);
   }
-  return { score, completionRate, onTimeRate, consistency, readinessScore, readinessApprovedCount: marksValues.length, tasksAssigned: myTasks.length, tasksDone: doneTasks.length, daysElapsed };
+  return { score, completionRate, onTimeRate, consistency, readinessScore, readinessApprovedCount: marksValues.length, tasksAssigned: myTasks.length, tasksDone: doneTasks.length, daysElapsed: workDays };
 }
 
 async function renderCEO(){
@@ -826,23 +866,28 @@ async function renderOverview(){
   const compMap = {}; (comp||[]).forEach(c=> compMap[c.Email]=c.AnnualCTC);
   const staff = ALL_MEMBERS.filter(m=>m.role==='Estimation'||m.role==='CBD');
 
-  let scoreSum=0, totalCost=0, totalShortfall=0;
+  let scoreSum=0, scoredCount=0, totalCost=0, totalShortfall=0;
   const deptStats = {};
   staff.forEach(m=>{
     const s = computeScore(m.email, tasks, activity, SCORE_APPROVALS_CACHE);
-    scoreSum += s.score;
+    if(s.score!==null){ scoreSum += s.score; scoredCount++; }
     const ctc = compMap[m.email];
     let cost=0, shortfall=0;
-    if(ctc){ cost = (ctc/365)*s.daysElapsed; shortfall = cost*(1-s.score/100); totalCost+=cost; totalShortfall+=shortfall; }
-    if(!deptStats[m.role]) deptStats[m.role] = { count:0, scoreSum:0, done:0, assigned:0, cost:0, shortfall:0 };
-    deptStats[m.role].count++; deptStats[m.role].scoreSum += s.score;
+    if(ctc){
+      cost = (ctc/365)*new Date().getDate(); totalCost+=cost;
+      // Shortfall only computed where a real score exists — "no data" is not the same as 0% delivery
+      if(s.score!==null){ shortfall = cost*(1-s.score/100); totalShortfall+=shortfall; }
+    }
+    if(!deptStats[m.role]) deptStats[m.role] = { count:0, scoreSum:0, scored:0, done:0, assigned:0, cost:0, shortfall:0 };
+    deptStats[m.role].count++;
+    if(s.score!==null){ deptStats[m.role].scoreSum += s.score; deptStats[m.role].scored++; }
     deptStats[m.role].done += s.tasksDone; deptStats[m.role].assigned += s.tasksAssigned;
     deptStats[m.role].cost += cost; deptStats[m.role].shortfall += shortfall;
   });
 
   const totalTasks = tasks.length, doneTasks = tasks.filter(t=>t.Status==='Done').length;
   document.getElementById('overviewKpis').innerHTML = [
-    ['Avg Team Score', staff.length ? Math.round(scoreSum/staff.length)+'%' : '—', ''],
+    ['Avg Team Score', scoredCount ? Math.round(scoreSum/scoredCount)+'%' : '—', ''],
     ['Task Completion', totalTasks ? Math.round(doneTasks/totalTasks*100)+'%' : '—', ''],
     ['Team Cost MTD', inr(totalCost), 'blue'],
     ['Shortfall MTD', inr(totalShortfall), 'red']
@@ -850,7 +895,7 @@ async function renderOverview(){
 
   document.getElementById('overviewDeptBody').innerHTML = Object.keys(deptStats).map(role=>{
     const d = deptStats[role];
-    return '<tr><td>'+role+'</td><td>'+d.count+'</td><td>'+scoreBar(d.count?d.scoreSum/d.count:0)+'</td><td>'+d.done+' / '+d.assigned+'</td><td class="mono">'+inr(d.cost)+'</td><td class="mono" style="color:var(--red)">'+inr(d.shortfall)+'</td></tr>';
+    return '<tr><td>'+role+'</td><td>'+d.count+'</td><td>'+scoreBar(d.scored?d.scoreSum/d.scored:null)+'</td><td>'+d.done+' / '+d.assigned+'</td><td class="mono">'+inr(d.cost)+'</td><td class="mono" style="color:var(--red)">'+inr(d.shortfall)+'</td></tr>';
   }).join('') || '<tr><td colspan="6" style="text-align:center;color:#999;padding:16px;">No staff yet</td></tr>';
 }
 
@@ -866,14 +911,17 @@ async function renderPerformanceCEO(){
     const s = computeScore(m.email, tasks, activity, SCORE_APPROVALS_CACHE);
     const ctc = compMap[m.email] || null;
     let costMtd=null, valueDelivered=null, shortfall=null;
-    if(ctc){ costMtd=(ctc/365)*s.daysElapsed; valueDelivered=costMtd*(s.score/100); shortfall=costMtd-valueDelivered; totalCost+=costMtd; totalValue+=valueDelivered; totalShortfall+=shortfall; }
-    scoreSum+=s.score; scoreCount++;
+    if(ctc){
+      costMtd=(ctc/365)*new Date().getDate(); totalCost+=costMtd;
+      if(s.score!==null){ valueDelivered=costMtd*(s.score/100); shortfall=costMtd-valueDelivered; totalValue+=valueDelivered; totalShortfall+=shortfall; }
+    }
+    if(s.score!==null){ scoreSum+=s.score; scoreCount++; }
     return { m, s, ctc, costMtd, valueDelivered, shortfall };
   });
 
   document.getElementById('perfBody').innerHTML = rows.map(r=>
     '<tr><td>'+r.m.name+'</td><td>'+r.m.role+'</td><td>'+scoreBar(r.s.score)+'</td>'+
-    '<td>'+r.s.tasksDone+'/'+r.s.tasksAssigned+'</td><td>'+Math.round(r.s.onTimeRate*100)+'%</td><td>'+Math.round(r.s.consistency*100)+'%</td>'+
+    '<td>'+r.s.tasksDone+'/'+r.s.tasksAssigned+'</td><td>'+pctOrDash(r.s.onTimeRate)+'</td><td>'+pctOrDash(r.s.consistency)+'</td>'+
     '<td>'+(r.s.readinessScore!==null ? r.s.readinessApprovedCount+' items, avg '+Math.round(r.s.readinessScore*100)+'%' : '— none yet')+'</td>'+
     '<td><input type="number" class="ctc-input mono" data-email="'+r.m.email+'" value="'+(r.ctc||'')+'" placeholder="Set CTC"></td>'+
     '<td class="mono">'+(r.costMtd!==null?inr(r.costMtd):'—')+'</td>'+
@@ -898,11 +946,84 @@ async function renderPerformanceCEO(){
   ].map(([lbl,val,cls])=>'<div class="kpi"><div class="val '+cls+'">'+val+'</div><div class="lbl">'+lbl+'</div></div>').join('');
 }
 
+// ---------- TASK HISTORY (all roles) ----------
+async function toggleTaskHistory(el){
+  const tr = el.closest('tr');
+  const next = tr.nextElementSibling;
+  if(next && next.classList.contains('history-row')){ next.remove(); return; }
+  // close any other open history row in this table
+  tr.closest('tbody').querySelectorAll('.history-row').forEach(x=>x.remove());
+  const row = document.createElement('tr'); row.className='history-row';
+  const td = document.createElement('td'); td.colSpan = tr.children.length;
+  td.innerHTML = '<span class="spinner-inline"></span> Loading history…';
+  row.appendChild(td); tr.after(row);
+  try{
+    const hist = await api('getTaskHistory', { taskId: el.dataset.id });
+    td.innerHTML = (hist && hist.length)
+      ? '<table>'+hist.map(h=>'<tr><td class="mono">'+new Date(h.At).toLocaleString()+'</td><td><b>'+esc(h.ByName||h.ByEmail||'—')+'</b></td><td>'+esc(h.FromStatus||'created')+' → <b>'+esc(h.ToStatus)+'</b></td><td>'+esc(h.Note||'')+'</td></tr>').join('')+'</table>'
+      : '<span style="color:#999;">No history recorded for this task yet (logging starts from the backend update).</span>';
+  } catch(err){ td.innerHTML = '<span style="color:var(--red);">'+esc(err.message)+'</span>'; }
+}
+
+// ---------- TODAY'S FOCUS (member) ----------
+function focusItemHtml(badgeCls, badgeText, title, sub, meta){
+  return '<div class="focus-item"><span class="f-badge '+badgeCls+'">'+badgeText+'</span><span>'+title+(sub?'<div class="hint" style="margin:0;">'+sub+'</div>':'')+'</span><span class="f-meta">'+meta+'</span></div>';
+}
+const PRIORITY_RANK = { 'Urgent':0, 'High':1, 'Medium':2, 'Low':3 };
+function renderTodaysFocus(){
+  const box = document.getElementById('focusList');
+  if(!box) return;
+  const todayStr = new Date().toISOString().slice(0,10);
+  const soonStr = new Date(Date.now()+3*86400000).toISOString().slice(0,10);
+  const open = (MY_TASKS_CACHE||[]).filter(t=>t.Status!=='Done');
+  const byPrioDue = (a,b)=> (PRIORITY_RANK[a.Priority]??2)-(PRIORITY_RANK[b.Priority]??2) || (a.DueDate||'9999').localeCompare(b.DueDate||'9999');
+  const overdue = open.filter(t=>t.DueDate && t.DueDate<todayStr).sort(byPrioDue);
+  const dueSoon = open.filter(t=>t.DueDate && t.DueDate>=todayStr && t.DueDate<=soonStr).sort(byPrioDue);
+
+  let html = '';
+  overdue.forEach(t=>{
+    const days = Math.round((new Date(todayStr)-new Date(t.DueDate))/86400000);
+    html += focusItemHtml('f-overdue','OVERDUE', esc(t.Title), esc(t.Site)+' · '+esc(t.Priority), days+'d late');
+  });
+  dueSoon.forEach(t=>{
+    html += focusItemHtml('f-duesoon','DUE SOON', esc(t.Title), esc(t.Site)+' · '+esc(t.Priority), t.DueDate===todayStr?'today':t.DueDate);
+  });
+  box.innerHTML = html || '<span class="hint">No overdue or due-soon tasks 🎉 Checking readiness items…</span>';
+  appendReadinessFocus(box, html!=='');
+}
+async function appendReadinessFocus(box, hadTasks){
+  try{
+    if(!READINESS_RAW){
+      const res = await fetch(CBD_FEED_URL, { cache:'no-store' });
+      const json = await res.json();
+      READINESS_RAW = json.rows || [];
+      enrichReadinessRows();
+    }
+    const mine = READINESS_RAW.filter(r =>
+      (ME.sites||[]).some(s => ccNormalizeSite(s)===ccNormalizeSite(r.project)) &&
+      (r._status==='Slipping' || r._status==='Critical') && !r._fullyReady
+    ).sort((a,b)=>(a._days??9999)-(b._days??9999)).slice(0,8);
+    if(!mine.length){
+      if(!hadTasks) box.innerHTML = '<span class="hint">Nothing urgent right now — all clear on tasks and readiness 🎉</span>';
+      else box.querySelectorAll('.hint').forEach(h=>{ if(h.textContent.includes('Checking readiness')) h.remove(); });
+      return;
+    }
+    const readyHtml = mine.map(r=>{
+      const daysLabel = r._days===null?'—':(r._days<0?Math.abs(r._days)+'d overdue start':r._days+'d to start');
+      return focusItemHtml('f-readiness', r._status==='Slipping'?'SLIPPING':'CRITICAL',
+        esc(r.project)+' / '+esc(r.wing)+' — '+esc(r.scope_of_work),
+        'Est '+Math.round(r.estimation_marks||0)+'% · Contract '+Math.round(r.contract_marks||0)+'%', daysLabel);
+    }).join('');
+    if(hadTasks) box.innerHTML += readyHtml;
+    else box.innerHTML = readyHtml;
+  } catch(e){ /* readiness feed unavailable — task items already shown */ }
+}
+
 // ============== MEMBER LOGIC (Estimation / CBD) ==============
 async function renderMember(){
   document.getElementById('logSite').innerHTML = (ME.sites||[]).map(s=>'<option>'+s+'</option>').join('') || '<option value="">No sites assigned</option>';
   document.getElementById('logDate').value = new Date().toISOString().slice(0,10);
-  await renderMyTasks(); await populateMyTaskDropdown(); await renderMyFeed(); await renderKPIsMember(); await renderMyPerformance();
+  await renderMyTasks(); renderTodaysFocus(); await populateMyTaskDropdown(); await renderMyFeed(); await renderKPIsMember(); await renderMyPerformance();
   document.getElementById('logSubmitBtn').addEventListener('click', submitActivity);
 }
 
@@ -940,15 +1061,25 @@ function renderMyTasksTable(){
   if(fStatus) rows = rows.filter(r=>r.Status===fStatus);
   rows.sort((a,b)=> (a.DueDate||'').localeCompare(b.DueDate||''));
   document.getElementById('myTasksBody').innerHTML = rows.map(r=>{
-    if(r.Status==='Done') return '<tr><td>'+r.Title+'</td><td>'+r.Site+'</td><td>'+r.Priority+'</td><td>'+(r.DueDate||'—')+'</td><td><span class="tag tag-done">Done</span></td></tr>';
+    const hist = ' <span class="history-link" data-id="'+esc(r.ID)+'" onclick="toggleTaskHistory(this)">history</span>';
+    const blockedNote = (r.Status==='Blocked' && r.BlockedReason) ? '<div class="blocked-note">⛔ '+esc(r.BlockedReason)+'</div>' : '';
+    if(r.Status==='Done') return '<tr><td>'+esc(r.Title)+hist+'</td><td>'+esc(r.Site)+'</td><td>'+esc(r.Priority)+'</td><td>'+(r.DueDate||'—')+'</td><td><span class="tag tag-done">Done</span></td></tr>';
     const options = ['Not Started','In Progress','Pending Review','Blocked'];
-    return '<tr><td>'+r.Title+'</td><td>'+r.Site+'</td><td>'+r.Priority+'</td><td>'+(r.DueDate||'—')+'</td>'+
-    '<td><select class="status-select" data-id="'+r.ID+'">'+options.map(s=>'<option'+(s===r.Status?' selected':'')+'>'+s+'</option>').join('')+'</select></td></tr>';
+    return '<tr><td>'+esc(r.Title)+hist+blockedNote+'</td><td>'+esc(r.Site)+'</td><td>'+esc(r.Priority)+'</td><td>'+(r.DueDate||'—')+'</td>'+
+    '<td><select class="status-select" data-id="'+esc(r.ID)+'">'+options.map(s=>'<option'+(s===r.Status?' selected':'')+'>'+s+'</option>').join('')+'</select></td></tr>';
   }).join('') || '<tr><td colspan="5" style="text-align:center;color:#999;padding:16px;">No tasks match this filter</td></tr>';
 
   document.querySelectorAll('#myTasksBody .status-select').forEach(sel=>{
     sel.addEventListener('change', async ()=>{
-      try{ await api('updateTaskStatus', { taskId: sel.dataset.id, status: sel.value }); await renderKPIsMember(); await renderMyPerformance(); }
+      let blockedReason = '';
+      if(sel.value==='Blocked'){
+        blockedReason = (prompt('What is blocking this task?\nMention what it\'s waiting on and who owns the blocker — this is required.')||'').trim();
+        if(!blockedReason){ await renderMyTasks(); return; } // cancelled — revert
+      }
+      try{
+        await api('updateTaskStatus', { taskId: sel.dataset.id, status: sel.value, blockedReason });
+        await renderMyTasks(); await renderKPIsMember(); await renderMyPerformance(); renderTodaysFocus();
+      }
       catch(err){ alert(err.message); await renderMyTasksTable(); }
     });
   });
@@ -993,8 +1124,8 @@ async function renderMyPerformance(){
   } catch(e){}
   const s = computeScore(ME.email, tasks, activity, approvals);
   document.getElementById('myPerfKpis').innerHTML = [
-    ['Overall Score', s.score+'%', ''],['Tasks Done', s.tasksDone+'/'+s.tasksAssigned, ''],
-    ['On-Time Rate', Math.round(s.onTimeRate*100)+'%', ''],['Activity Consistency', Math.round(s.consistency*100)+'%', ''],
+    ['Overall Score', s.score!==null ? s.score+'%' : '—', ''],['Tasks Done', s.tasksDone+'/'+s.tasksAssigned, ''],
+    ['On-Time Rate', pctOrDash(s.onTimeRate), ''],['Activity Consistency', pctOrDash(s.consistency), ''],
     ['Readiness Items Approved', s.readinessScore!==null ? s.readinessApprovedCount+' (avg '+Math.round(s.readinessScore*100)+'%)' : 'None yet this month', '']
   ].map(([lbl,val,cls])=>'<div class="kpi"><div class="val '+cls+'">'+val+'</div><div class="lbl">'+lbl+'</div></div>').join('');
 }
