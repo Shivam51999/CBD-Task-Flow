@@ -105,6 +105,12 @@
   .history-row td{background:#FAFAF7;font-size:11.5px;padding:8px 12px;}
   .history-row table td{padding:3px 10px 3px 0;border:none;}
   .blocked-note{font-size:11px;color:var(--red);margin-top:2px;}
+  .seg-tabs{display:flex;gap:8px;margin:0 0 14px;}
+  .seg-btn{border:1px solid var(--line);background:#fff;padding:8px 18px;border-radius:20px;font-size:12.5px;font-weight:600;color:var(--ink-soft);cursor:pointer;}
+  .seg-btn.active{background:var(--charcoal);color:#fff;border-color:var(--charcoal);}
+  .kpi.clickable{cursor:pointer;transition:background .15s;}
+  .kpi.clickable:hover{background:#FAF7F2;}
+  .tag-wait{background:#FFF3E0;color:#C97B2E;}
   .filter-bar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;}
   .filter-bar select,.filter-bar input{font-size:12px;padding:6px 9px;}
   .score-bar{width:70px;height:7px;background:#EFEFEF;border-radius:4px;overflow:hidden;display:inline-block;vertical-align:middle;margin-right:6px;}
@@ -284,6 +290,10 @@
         <h3>Project Readiness — <span id="readinessScopeLabel">—</span></h3>
         <p class="hint">Estimation & contracting readiness ahead of site activity start — pulled live from the CBD tracking sheet, the same data behind your original readiness dashboard.</p>
         <div class="kpi-row" id="readinessKpis"></div>
+        <div class="seg-tabs" id="readinessSegTabs" style="display:none;">
+          <button class="seg-btn active" data-seg="pending" id="segPendingBtn">⏳ Pending</button>
+          <button class="seg-btn" data-seg="completed" id="segCompletedBtn">✅ Completed</button>
+        </div>
         <div class="filter-bar" id="readinessFilterBar">
           <select id="fReadinessTeam">
             <option value="">Both Teams — days to activity start</option>
@@ -1023,7 +1033,9 @@ async function appendReadinessFocus(box, hadTasks){
     }
     const mine = READINESS_RAW.filter(r =>
       (ME.sites||[]).some(s => ccNormalizeSite(s)===ccNormalizeSite(r.project)) &&
-      !r._fullyReady && r._days!==null && r._days<=20   // 20-day advance notice window (incl. overdue)
+      !r._fullyReady && r._days!==null && r._days<=20 &&   // 20-day advance notice window (incl. overdue)
+      (TEAM_LENS!=='Contract' || r.estimation_marks===100) &&   // contracts only see estimation-completed items
+      myTeamMarks(r)!==100                                       // don't nag about items you've finished
     ).sort((a,b)=>(a._days??9999)-(b._days??9999)).slice(0,10);
     if(!mine.length){
       if(!hadTasks) box.innerHTML = '<span class="hint">Nothing urgent right now — all clear on tasks and deadlines 🎉</span>';
@@ -1086,7 +1098,9 @@ async function renderDigestMember(){
 
     const deadlines = (READINESS_RAW||[]).filter(r =>
       (ME.sites||[]).some(s => ccNormalizeSite(s)===ccNormalizeSite(r.project)) &&
-      !r._fullyReady && r._days!==null && r._days<=20
+      !r._fullyReady && r._days!==null && r._days<=20 &&
+      (TEAM_LENS!=='Contract' || r.estimation_marks===100) &&   // contracts only see estimation-completed items
+      myTeamMarks(r)!==100
     ).sort((a,b)=>(a._days??9999)-(b._days??9999)).slice(0,15);
     const dlWord = TEAM_LENS==='Estimation' ? 'planning deadline' : TEAM_LENS==='Contract' ? 'contract deadline' : 'start';
     const teamWord = TEAM_LENS==='Estimation' ? 'Estimation planning deadlines' : TEAM_LENS==='Contract' ? 'Contract deadlines' : 'Deadlines';
@@ -1450,6 +1464,26 @@ function setupReadinessScopeUI(){
     document.querySelector('#readinessTable thead tr').innerHTML =
       '<th id="readinessDaysTh">'+lensDeadlineLabel()+'</th><th>Project</th><th>Wing</th><th>Category</th><th>Scope of Work</th>'+
       '<th>'+dlColName+'</th><th>% Done</th><th>Status</th><th></th>';
+    // Pending / Completed sub-tabs
+    const segTabs = document.getElementById('readinessSegTabs');
+    segTabs.style.display = 'flex';
+    segTabs.querySelectorAll('.seg-btn').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        segTabs.querySelectorAll('.seg-btn').forEach(b=>b.classList.remove('active'));
+        btn.classList.add('active');
+        READINESS_SEG = btn.dataset.seg;
+        renderReadinessTable();
+      });
+    });
+    if(TEAM_LENS==='Contract'){
+      document.querySelector('#readinessSimpleView .hint').textContent =
+        'Contracts workflow: an item appears here only after the Estimation team has completed it (100%). Pending shows what needs your action; Completed holds what you\'ve finished — including updates still awaiting HOD approval.';
+    } else if(TEAM_LENS==='Estimation'){
+      document.querySelector('#readinessSimpleView .hint').textContent =
+        'Estimation workflow: complete your checklist per item — the Contracts team can only start once your part hits 100%. Pending shows what needs your action; Completed holds what you\'ve finished, including updates still awaiting HOD approval.';
+    }
+    document.querySelector('#fReadinessStatus option[value=""]').textContent = 'All Statuses';
+    ensurePendingApprovalsLoaded();   // needed to flag "awaiting HOD approval" items
   } else {
     teamSel.value = TEAM_LENS;
     document.getElementById('readinessDaysTh').textContent = lensDeadlineLabel();
@@ -1462,6 +1496,36 @@ function setupReadinessScopeUI(){
   }
 }
 
+// Pending / Completed segmentation state + pending-approval cache (members)
+let READINESS_SEG = 'pending';
+let PENDING_APPROVALS = null;
+async function ensurePendingApprovalsLoaded(){
+  if(PENDING_APPROVALS) return;
+  try{
+    const res = await fetch(CBD_FEED_URL, { method:'POST', body: JSON.stringify({ action:'getApprovalLog' }) });
+    const json = await res.json();
+    PENDING_APPROVALS = (json.ok ? json.data : []).filter(a=>a.Status==='Pending');
+    renderReadinessTable();   // re-render so "awaiting approval" badges appear
+  } catch(e){ PENDING_APPROVALS = []; }
+}
+function myTeamMarks(r){ return TEAM_LENS==='Estimation' ? r.estimation_marks : TEAM_LENS==='Contract' ? r.contract_marks : r._readiness; }
+function pendingApprovalFor(r){
+  return (PENDING_APPROVALS||[]).find(a => a.Sheet===r.sheet && String(a.ItemNo)===String(r.item_no));
+}
+// completed = my team's marks are 100 on the sheet, OR I submitted 100% and HOD hasn't approved yet
+function isItemCompleted(r){
+  if(myTeamMarks(r)===100) return true;
+  const pa = pendingApprovalFor(r);
+  if(pa){
+    try{
+      const u = JSON.parse(pa.ProposedUpdates||'{}');
+      const key = TEAM_LENS==='Estimation' ? 'estimation_marks' : 'contract_marks';
+      if(u[key]===100) return true;
+    } catch(e){}
+  }
+  return false;
+}
+
 function renderReadinessTable(){
   let rows = READINESS_RAW || [];
   if(!rows.length){
@@ -1469,8 +1533,13 @@ function renderReadinessTable(){
     document.getElementById('readinessBody').innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--red);padding:20px;">The readiness feed returned 0 items. This usually means the tracker column mapping in Apps Script (TRACKER.HEADERS) doesn\'t match your sheet\'s headers yet — run debugListAllHeaders() there and adjust, then redeploy.</td></tr>';
     return;
   }
+  const memberLens = !isUnrestrictedReadiness() && TEAM_LENS;
   if(!isUnrestrictedReadiness()){
     rows = rows.filter(r => (ME.sites||[]).some(s => ccNormalizeSite(s)===ccNormalizeSite(r.project)));
+  }
+  // SEQUENTIAL GATING: Contracts can only see items Estimation has finished (100%)
+  if(memberLens && TEAM_LENS==='Contract'){
+    rows = rows.filter(r => r.estimation_marks===100);
   }
   const fProject = document.getElementById('fReadinessProject').value;
   const fCategory = document.getElementById('fReadinessCategory').value;
@@ -1479,30 +1548,68 @@ function renderReadinessTable(){
   if(fCategory) rows = rows.filter(r=>r.category===fCategory);
 
   const total = rows.length;
-  const ready = rows.filter(r=>r._status==='Ready').length;
+  const ready = rows.filter(r=> memberLens ? isItemCompleted(r) : r._status==='Ready').length;
   const critical = rows.filter(r=>r._status==='Critical').length;
   const slipping = rows.filter(r=>r._status==='Slipping').length;
   document.getElementById('readinessKpis').innerHTML = [
-    ['Items in Scope', total, ''],
-    ['Fully Ready', ready, 'green'],
-    ['Critical ≤45d', critical, 'amber'],
-    ['Slipping', slipping, 'red']
-  ].map(([lbl,val,cls])=>'<div class="kpi"><div class="val '+cls+'">'+val+'</div><div class="lbl">'+lbl+'</div></div>').join('');
+    ['Items in Scope', total, '', ''],
+    [memberLens?'Completed':'Fully Ready', ready, 'green', 'Ready'],
+    ['Critical ≤45d', critical, 'amber', 'Critical'],
+    ['Slipping', slipping, 'red', 'Slipping']
+  ].map(([lbl,val,cls,st])=>'<div class="kpi clickable" data-status="'+st+'" title="Click to view these items"><div class="val '+cls+'">'+val+'</div><div class="lbl">'+lbl+'</div></div>').join('');
+  // CLICKABLE KPI CARDS → open those items in the table below
+  document.querySelectorAll('#readinessKpis .kpi.clickable').forEach(k=>{
+    k.addEventListener('click', ()=>{
+      const st = k.dataset.status;
+      const statusSel = document.getElementById('fReadinessStatus');
+      if(memberLens){
+        // choose the right sub-tab, then apply the status filter within it
+        READINESS_SEG = (st==='Ready') ? 'completed' : 'pending';
+        document.querySelectorAll('#readinessSegTabs .seg-btn').forEach(b=>b.classList.toggle('active', b.dataset.seg===READINESS_SEG));
+        statusSel.value = (st==='Critical'||st==='Slipping') ? st : '';
+      } else {
+        statusSel.value = st;
+      }
+      renderReadinessTable();
+      document.getElementById('readinessTable').scrollIntoView({behavior:'smooth', block:'start'});
+    });
+  });
 
-  // If a specific status is chosen, show exactly that; otherwise default to the at-risk set
-  let displayRows = fStatus ? rows.filter(r=>r._status===fStatus) : rows.filter(r=>r._status==='Slipping'||r._status==='Critical'||r._status==='Watch');
-  displayRows = displayRows.slice().sort((a,b)=>(a._days??9999)-(b._days??9999)).slice(0,150);
+  let displayRows;
+  if(memberLens){
+    // Pending / Completed split — members always land on Pending
+    const completed = rows.filter(isItemCompleted);
+    const pending = rows.filter(r=>!isItemCompleted(r));
+    document.getElementById('segPendingBtn').textContent = '⏳ Pending ('+pending.length+')';
+    document.getElementById('segCompletedBtn').textContent = '✅ Completed ('+completed.length+')';
+    displayRows = READINESS_SEG==='completed' ? completed : pending;
+    if(fStatus) displayRows = displayRows.filter(r=>r._status===fStatus);
+  } else {
+    // manager simple view keeps the original at-risk default
+    displayRows = fStatus ? rows.filter(r=>r._status===fStatus) : rows.filter(r=>r._status==='Slipping'||r._status==='Critical'||r._status==='Watch');
+  }
+  displayRows = displayRows.slice().sort((a,b)=>(a._days??9999)-(b._days??9999)).slice(0,200);
 
-  const memberLens = !isUnrestrictedReadiness() && TEAM_LENS;
   document.getElementById('readinessBody').innerHTML = displayRows.map(r=>{
     const daysLabel = r._days===null?'—':(r._days<0?Math.abs(r._days)+'d overdue':r._days+'d');
     const rid = readinessRowId(r);
     if(memberLens){
       const marks = TEAM_LENS==='Estimation' ? r.estimation_marks : r.contract_marks;
-      return '<tr><td class="mono">'+daysLabel+'</td><td>'+esc(r.project)+'</td><td>'+esc(r.wing)+'</td><td>'+esc(r.category||'—')+'</td><td>'+esc(r.scope_of_work)+'</td><td class="mono">'+lensDate(r)+'</td><td>'+Math.round(marks||0)+'%</td><td>'+r._status+'</td><td><button class="ghost-btn" data-rid="'+rid+'" onclick="openReadinessEdit(this)">Update</button></td></tr>';
+      let statusCell;
+      if(READINESS_SEG==='completed'){
+        statusCell = myTeamMarks(r)===100
+          ? '<span class="tag tag-done">✅ Completed</span>'
+          : '<span class="tag tag-wait">⏳ Not approved yet</span>';
+      } else {
+        statusCell = pendingApprovalFor(r) ? '<span class="tag tag-wait">⏳ Update in approval</span>' : r._status;
+      }
+      return '<tr><td class="mono">'+daysLabel+'</td><td>'+esc(r.project)+'</td><td>'+esc(r.wing)+'</td><td>'+esc(r.category||'—')+'</td><td>'+esc(r.scope_of_work)+'</td><td class="mono">'+lensDate(r)+'</td><td>'+Math.round(marks||0)+'%</td><td>'+statusCell+'</td><td><button class="ghost-btn" data-rid="'+rid+'" onclick="openReadinessEdit(this)">Update</button></td></tr>';
     }
     return '<tr><td class="mono">'+daysLabel+'</td><td>'+esc(r.project)+'</td><td>'+esc(r.wing)+'</td><td>'+esc(r.category||'—')+'</td><td>'+esc(r.scope_of_work)+'</td><td class="mono">'+lensDate(r)+'</td><td>'+Math.round(r.estimation_marks||0)+'%</td><td>'+Math.round(r.contract_marks||0)+'%</td><td>'+r._status+'</td><td><button class="ghost-btn" data-rid="'+rid+'" onclick="openReadinessEdit(this)">Update</button></td></tr>';
-  }).join('') || '<tr><td colspan="10" style="text-align:center;color:#999;padding:16px;">No items match this filter 🎉</td></tr>';
+  }).join('') || '<tr><td colspan="10" style="text-align:center;color:#999;padding:16px;">'+
+    (memberLens && READINESS_SEG==='pending' ? 'No pending items — everything on your plate is done 🎉 Check the Completed tab.' :
+     memberLens ? 'Nothing completed yet — items you finish (or submit for approval) will appear here.' :
+     'No items match this filter 🎉')+'</td></tr>';
 }
 
 // ---------- INLINE EDIT: update a readiness item's checklist/marks ----------
@@ -1596,6 +1703,9 @@ document.getElementById('saveReadinessEditBtn').addEventListener('click', async 
       })});
       const json = await res.json();
       if(!json.ok) throw new Error(json.error||'Submit failed');
+      // reflect immediately: the item shows under Completed as "Not approved yet"
+      PENDING_APPROVALS = PENDING_APPROVALS || [];
+      PENDING_APPROVALS.push({ Sheet: currentEditRow.sheet, ItemNo: currentEditRow.item_no, ProposedUpdates: JSON.stringify(updates), Status:'Pending' });
       msg.textContent = 'Submitted — waiting on HOD approval.'; msg.className='status-msg ok';
     }
     if(isUnrestrictedReadiness()) ccRenderAll(); else renderReadinessTable();
