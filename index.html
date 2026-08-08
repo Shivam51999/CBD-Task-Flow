@@ -277,6 +277,11 @@
         <p class="hint">Estimation & contracting readiness ahead of site activity start — pulled live from the CBD tracking sheet, the same data behind your original readiness dashboard.</p>
         <div class="kpi-row" id="readinessKpis"></div>
         <div class="filter-bar" id="readinessFilterBar">
+          <select id="fReadinessTeam">
+            <option value="">Both Teams — days to activity start</option>
+            <option value="Estimation">Estimation — days to planning deadline</option>
+            <option value="Contract">Contracts — days to contract deadline</option>
+          </select>
           <select id="fReadinessProject"></select>
           <select id="fReadinessCategory"><option value="">All Categories</option></select>
           <select id="fReadinessStatus">
@@ -290,7 +295,7 @@
           </select>
         </div>
         <div class="table-wrap"><table id="readinessTable"><thead><tr>
-          <th>Days to Start</th><th>Project</th><th>Wing</th><th>Category</th><th>Scope of Work</th><th>Start Date</th><th>Est %</th><th>Contract %</th><th>Status</th><th></th>
+          <th id="readinessDaysTh">Days to Start</th><th>Project</th><th>Wing</th><th>Category</th><th>Scope of Work</th><th>Start Date</th><th>Est %</th><th>Contract %</th><th>Status</th><th></th>
         </tr></thead><tbody id="readinessBody"></tbody></table></div>
       </div>
     </div>
@@ -338,6 +343,11 @@
       </div>
 
       <div class="cc-filters">
+        <div class="cc-filter-group"><label>Team</label><select id="ccFTeam">
+          <option value="">Both Teams — days to activity start</option>
+          <option value="Estimation">Estimation — days to planning deadline</option>
+          <option value="Contract">Contracts — days to contract deadline</option>
+        </select></div>
         <div class="cc-filter-group"><label>Project</label><select id="ccFProject"><option value="">All Projects</option></select></div>
         <div class="cc-filter-group"><label>Wing / Tower</label><select id="ccFWing"><option value="">All Wings</option></select></div>
         <div class="cc-filter-group"><label>Category</label><select id="ccFCategory"><option value="">All Categories</option></select></div>
@@ -500,9 +510,11 @@
 
 <script>
 // ============== CONFIG ==============
-// Both point to the SAME unified Apps Script deployment now — GET requests
-// serve the readiness feed, POST requests handle login/tasks/activity/approvals.
-const MANGALAM_API_URL = 'https://script.google.com/macros/s/AKfycbxqW62sN83MvGp455CIJCvbtcQc76mB1pa6nnTKguOabYwye8-WKmtWcIW2wazWpcKy/exec';
+// All requests now go through the same-origin Vercel proxy (/api/sheet.js),
+// which forwards to the unified Apps Script deployment server-side. This
+// eliminates the CORS block on direct script.google.com calls.
+// GET requests serve the readiness feed, POST requests handle login/tasks/activity/approvals.
+const MANGALAM_API_URL = '/api/sheet';
 const APPS_SCRIPT_URL = MANGALAM_API_URL;
 const CBD_FEED_URL = MANGALAM_API_URL;
 const ALL_SITES_FALLBACK = ['MANGALAM MIDAS CITY','MARVEL','MIRAYA','MITHILA','SHYNI GOLD','NIYOSHI PARK','AIKYAM','MELIZMA','MOMENTO','MYRA','LIFEPARK','STARVIEW'];
@@ -1144,6 +1156,22 @@ function ccNormalizeSite(s){
   return String(s||'').trim().toUpperCase().replace(/[-\s]+(I|II|III|IV|V|\d+)$/,'');
 }
 
+// TEAM LENS: '' = Both teams (status anchored on activity start date),
+// 'Estimation' = anchored on the planning_deadline set in the Estimation tab,
+// 'Contract'   = anchored on the contract_deadline set in the Contracts tab.
+let TEAM_LENS = '';
+function lensDeadlineLabel(){
+  return TEAM_LENS==='Estimation' ? 'Days to Est. Deadline'
+       : TEAM_LENS==='Contract'   ? 'Days to Contract Deadline'
+       : 'Days to Start';
+}
+// Date shown in the table's date column: the team's deadline under a lens,
+// otherwise the activity start date.
+function lensDate(r){
+  if(TEAM_LENS && r._anchor) return r._anchor.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'});
+  return r.activity_start_date || '—';
+}
+
 function enrichReadinessRows(){
   const today = new Date(); today.setHours(0,0,0,0);
   const parseDate = s => { if(!s) return null; const d=new Date(s+'T00:00:00'); return isNaN(d)?null:d; };
@@ -1156,11 +1184,27 @@ function enrichReadinessRows(){
     r._con = (r.contract_marks===null||r.contract_marks===undefined) ? null : r.contract_marks;
     const est = r._est==null?0:r._est;
     const con = r._con==null?0:r._con;
-    r._readiness = (est+con)/2;
-    r._fullyReady = (r._est===100 && r._con===100);
-    r._days = r._start ? daysBetween(r._start, today) : null;
-    if(!r._start) r._status='Unplanned';
-    else if(r._fullyReady) r._status='Ready';
+
+    // Which date + which marks drive the status depends on the team lens
+    let anchor, done;
+    if(TEAM_LENS==='Estimation'){
+      anchor = r._pdl || r._start;      // planning deadline; fall back to activity start if none set
+      done = (r._est===100);
+      r._readiness = est;
+    } else if(TEAM_LENS==='Contract'){
+      anchor = r._cdl || r._start;      // contract deadline; fall back to activity start if none set
+      done = (r._con===100);
+      r._readiness = con;
+    } else {
+      anchor = r._start;
+      done = (r._est===100 && r._con===100);
+      r._readiness = (est+con)/2;
+    }
+    r._fullyReady = done;
+    r._anchor = anchor;
+    r._days = anchor ? daysBetween(anchor, today) : null;
+    if(!anchor) r._status='Unplanned';
+    else if(done) r._status='Ready';
     else if(r._days<0) r._status='Slipping';
     else if(r._days<=45) r._status='Critical';
     else if(r._days<=90) r._status='Watch';
@@ -1218,6 +1262,14 @@ function setupReadinessScopeUI(){
   projSel.addEventListener('change', renderReadinessTable);
   catSel.addEventListener('change', renderReadinessTable);
   statusSel.addEventListener('change', renderReadinessTable);
+
+  const teamSel = document.getElementById('fReadinessTeam');
+  teamSel.addEventListener('change', ()=>{
+    TEAM_LENS = teamSel.value;
+    enrichReadinessRows();          // recompute days/status against the team's deadline
+    document.getElementById('readinessDaysTh').textContent = lensDeadlineLabel();
+    renderReadinessTable();
+  });
 }
 
 function renderReadinessTable(){
@@ -1249,7 +1301,7 @@ function renderReadinessTable(){
   document.getElementById('readinessBody').innerHTML = displayRows.map(r=>{
     const daysLabel = r._days===null?'—':(r._days<0?Math.abs(r._days)+'d overdue':r._days+'d');
     const rid = readinessRowId(r);
-    return '<tr><td class="mono">'+daysLabel+'</td><td>'+r.project+'</td><td>'+r.wing+'</td><td>'+(r.category||'—')+'</td><td>'+r.scope_of_work+'</td><td class="mono">'+(r.activity_start_date||'—')+'</td><td>'+Math.round(r.estimation_marks||0)+'%</td><td>'+Math.round(r.contract_marks||0)+'%</td><td>'+r._status+'</td><td><button class="ghost-btn" data-rid="'+rid+'" onclick="openReadinessEdit(this)">Update</button></td></tr>';
+    return '<tr><td class="mono">'+daysLabel+'</td><td>'+r.project+'</td><td>'+r.wing+'</td><td>'+(r.category||'—')+'</td><td>'+r.scope_of_work+'</td><td class="mono">'+lensDate(r)+'</td><td>'+Math.round(r.estimation_marks||0)+'%</td><td>'+Math.round(r.contract_marks||0)+'%</td><td>'+r._status+'</td><td><button class="ghost-btn" data-rid="'+rid+'" onclick="openReadinessEdit(this)">Update</button></td></tr>';
   }).join('') || '<tr><td colspan="10" style="text-align:center;color:#999;padding:16px;">No items match this filter 🎉</td></tr>';
 }
 
@@ -1435,6 +1487,14 @@ function ccSetupFilters(){
   fC.innerHTML = '<option value="">All Categories</option>' + categories.map(c=>'<option>'+c+'</option>').join('');
   ccRefreshWingOptions();
 
+  const fTeam = document.getElementById('ccFTeam');
+  fTeam.addEventListener('change', ()=>{
+    TEAM_LENS = fTeam.value;
+    enrichReadinessRows();          // recompute days/status against the team's deadline
+    document.querySelector('#ccRiskTable th[data-k="days"]').textContent = lensDeadlineLabel();
+    ccCurrentPage=1; ccRenderAll();
+  });
+
   [fP, document.getElementById('ccFWing'), fC, document.getElementById('ccFStatus')].forEach(el=>{
     el.addEventListener('change', ()=>{ if(el===fP) ccRefreshWingOptions(); ccCurrentPage=1; ccRenderAll(); });
   });
@@ -1442,6 +1502,7 @@ function ccSetupFilters(){
   document.getElementById('ccClearFilters').addEventListener('click', ()=>{
     fP.value=''; ccRefreshWingOptions(); document.getElementById('ccFWing').value='';
     fC.value=''; document.getElementById('ccFStatus').value=''; document.getElementById('ccFSearch').value='';
+    if(TEAM_LENS){ fTeam.value=''; TEAM_LENS=''; enrichReadinessRows(); document.querySelector('#ccRiskTable th[data-k="days"]').textContent = lensDeadlineLabel(); }
     ccCurrentPage=1; ccRenderAll();
   });
 
@@ -1526,7 +1587,7 @@ function ccRenderRiskTable(rows){
   const top = risk.slice(0,150);
   document.getElementById('ccRiskBody').innerHTML = top.map(r=>{
     const daysLabel = r._days===null?'—':(r._days<0?Math.abs(r._days)+'d overdue':r._days+'d');
-    return '<tr><td class="mono">'+daysLabel+'</td><td>'+r.project+'</td><td>'+r.wing+'</td><td>'+(r.category||'—')+'</td><td>'+r.scope_of_work+'</td><td class="mono">'+ccFmtDate(r._start)+'</td><td>'+ccBarMini(r._est)+'</td><td>'+ccBarMini(r._con)+'</td><td><span class="tag '+STATUS_CLASS[r._status]+'">'+STATUS_LABEL[r._status]+'</span></td></tr>';
+    return '<tr><td class="mono">'+daysLabel+'</td><td>'+r.project+'</td><td>'+r.wing+'</td><td>'+(r.category||'—')+'</td><td>'+r.scope_of_work+'</td><td class="mono">'+ccFmtDate(r._anchor||r._start)+'</td><td>'+ccBarMini(r._est)+'</td><td>'+ccBarMini(r._con)+'</td><td><span class="tag '+STATUS_CLASS[r._status]+'">'+STATUS_LABEL[r._status]+'</span></td></tr>';
   }).join('') || '<tr><td colspan="9" style="text-align:center;color:#999;padding:20px;">No at-risk items match current filters</td></tr>';
 }
 
@@ -1633,8 +1694,8 @@ function ccRenderLeaderboard(rows){
 function ccRenderOverdue(rows){
   const overdue=[]; const today=new Date(); today.setHours(0,0,0,0);
   rows.forEach(r=>{
-    if(r._pdl && ccDaysBetween(today,r._pdl)>0 && r._est!==100) overdue.push({type:'Estimation Deadline',project:r.project,wing:r.wing,scope:r.scope_of_work,dl:r._pdl,marks:r._est});
-    if(r._cdl && ccDaysBetween(today,r._cdl)>0 && r._con!==100) overdue.push({type:'Contract Deadline',project:r.project,wing:r.wing,scope:r.scope_of_work,dl:r._cdl,marks:r._con});
+    if(TEAM_LENS!=='Contract' && r._pdl && ccDaysBetween(today,r._pdl)>0 && r._est!==100) overdue.push({type:'Estimation Deadline',project:r.project,wing:r.wing,scope:r.scope_of_work,dl:r._pdl,marks:r._est});
+    if(TEAM_LENS!=='Estimation' && r._cdl && ccDaysBetween(today,r._cdl)>0 && r._con!==100) overdue.push({type:'Contract Deadline',project:r.project,wing:r.wing,scope:r.scope_of_work,dl:r._cdl,marks:r._con});
   });
   overdue.sort((a,b)=>ccDaysBetween(today,b.dl)-ccDaysBetween(today,a.dl));
   document.getElementById('ccOverdueCount').textContent = overdue.length.toLocaleString()+' overdue deadlines';
@@ -1662,7 +1723,7 @@ function ccRenderDataTable(rows){
   const startIdx=(ccCurrentPage-1)*CC_PAGE_SIZE;
   const pageRows = sorted.slice(startIdx, startIdx+CC_PAGE_SIZE);
   document.getElementById('ccDataBody').innerHTML = pageRows.map(r=>
-    '<tr><td>'+r.project+'</td><td>'+r.wing+'</td><td>'+(r.category||'—')+'</td><td class="mono">'+(r.item_no||'—')+'</td><td>'+r.scope_of_work+'</td><td class="mono">'+ccFmtDate(r._start)+'</td><td>'+ccBarMini(r._est)+'</td><td>'+ccBarMini(r._con)+'</td><td><span class="tag '+STATUS_CLASS[r._status]+'">'+STATUS_LABEL[r._status]+'</span></td></tr>'
+    '<tr><td>'+r.project+'</td><td>'+r.wing+'</td><td>'+(r.category||'—')+'</td><td class="mono">'+(r.item_no||'—')+'</td><td>'+r.scope_of_work+'</td><td class="mono">'+ccFmtDate(r._anchor||r._start)+'</td><td>'+ccBarMini(r._est)+'</td><td>'+ccBarMini(r._con)+'</td><td><span class="tag '+STATUS_CLASS[r._status]+'">'+STATUS_LABEL[r._status]+'</span></td></tr>'
   ).join('') || '<tr><td colspan="9" style="text-align:center;color:#999;padding:20px;">No items match current filters</td></tr>';
   document.getElementById('ccPageInfo').textContent = 'Page '+ccCurrentPage+' of '+totalPages;
   document.getElementById('ccPrevPage').disabled = ccCurrentPage<=1;
