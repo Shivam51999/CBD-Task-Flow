@@ -1222,16 +1222,42 @@ async function renderMember(){
 }
 
 let MY_TASKS_CACHE = [];
+// Programmatic tab switch (used by clickable KPI cards)
+function switchTab(tabId){
+  const btn = document.querySelector('#tabBar .tab-btn[data-tab="'+tabId+'"]');
+  if(btn) btn.click();
+}
+
 async function renderKPIsMember(){
-  MY_TASKS_CACHE = await api('getMyTasks', {});
+  if(!MY_TASKS_CACHE.length){ try{ MY_TASKS_CACHE = await api('getMyTasks', {}); } catch(e){} }
   const todayStr = new Date().toISOString().slice(0,10);
-  const open = MY_TASKS_CACHE.filter(r=>r.Status!=='Done').length;
-  const overdue = MY_TASKS_CACHE.filter(r=>r.DueDate && r.DueDate<todayStr && r.Status!=='Done').length;
-  const myFeed = await api('getMyFeed', {});
-  const loggedToday = myFeed.some(r=>String(r.Date).slice(0,10)===todayStr);
+  const openTasks = MY_TASKS_CACHE.filter(r=>r.Status!=='Done');
+  const overdueTasks = openTasks.filter(r=>r.DueDate && r.DueDate<todayStr);
+  let loggedToday = false;
+  try{
+    const myFeed = await api('getMyFeed', {});
+    loggedToday = myFeed.some(r=>String(r.Date).slice(0,10)===todayStr);
+  } catch(e){}
+  // Readiness workload counts toward the member's real numbers
+  await ensureReadinessLoaded();
+  const myItems = (READINESS_RAW||[]).filter(r =>
+    (ME.sites||[]).some(s => ccNormalizeSite(s)===ccNormalizeSite(r.project)) &&
+    (TEAM_LENS!=='Contract' || r.estimation_marks===100)   // contracts: only actionable items count
+  );
+  const pendingItems = myItems.filter(r=>!isItemCompleted(r));
+  const overdueItems = pendingItems.filter(r=>r._days!==null && r._days<0);
+  const openTotal = openTasks.length + pendingItems.length;
+  const overdueTotal = overdueTasks.length + overdueItems.length;
+
   document.getElementById('kpiRow').innerHTML = [
-    ['My Sites', (ME.sites||[]).length, ''],['Open Tasks', open, ''],['Overdue', overdue, 'red'],['Logged Today', loggedToday?'Yes':'No', '']
-  ].map(([lbl,val,cls])=>'<div class="kpi"><div class="val '+cls+'">'+val+'</div><div class="lbl">'+lbl+'</div></div>').join('');
+    ['My Sites', (ME.sites||[]).length, '', 'readiness', 'view readiness'],
+    ['Open Work', openTotal, '', (pendingItems.length && !openTasks.length)?'readiness':'mytasks', openTasks.length+' tasks · '+pendingItems.length+' sheet items'],
+    ['Overdue', overdueTotal, overdueTotal?'red':'', (overdueItems.length>=overdueTasks.length)?'readiness':'mytasks', overdueTasks.length+' tasks · '+overdueItems.length+' sheet items'],
+    ['Logged Today', loggedToday?'Yes':'No', loggedToday?'green':'red', 'log', loggedToday?'':'click to log now']
+  ].map(([lbl,val,cls,tab,sub])=>'<div class="kpi clickable" data-goto="'+tab+'" title="Click to open"><div class="val '+cls+'">'+val+'</div><div class="lbl">'+lbl+'</div>'+(sub?'<div class="lbl" style="opacity:.65;margin-top:2px;">'+sub+'</div>':'')+'</div>').join('');
+  document.querySelectorAll('#kpiRow .kpi.clickable').forEach(k=>{
+    k.addEventListener('click', ()=> switchTab(k.dataset.goto));
+  });
 }
 
 async function renderMyTasks(){
@@ -1281,7 +1307,34 @@ function renderMyTasksTable(){
 
 async function populateMyTaskDropdown(){
   const openTasks = MY_TASKS_CACHE.filter(t=>t.Status!=='Done');
-  document.getElementById('logTask').innerHTML = '<option value="">— none —</option>' + openTasks.map(t=>'<option value="'+t.ID+'">'+t.Title+'</option>').join('');
+  let html = '';
+  if(openTasks.length){
+    html += '<optgroup label="Tasks assigned by HOD">' +
+      openTasks.map(t=>'<option value="'+esc(t.ID)+'" data-site="'+esc(t.Site||'')+'">'+esc(t.Title)+'</option>').join('') +
+      '</optgroup>';
+  }
+  // Readiness items from the tracker sheet (member's pending work, team-gated)
+  await ensureReadinessLoaded();
+  const items = (READINESS_RAW||[]).filter(r =>
+    (ME.sites||[]).some(s => ccNormalizeSite(s)===ccNormalizeSite(r.project)) &&
+    (TEAM_LENS!=='Contract' || r.estimation_marks===100) &&
+    !isItemCompleted(r)
+  ).sort((a,b)=>(a._days??9999)-(b._days??9999)).slice(0,150);
+  if(items.length){
+    html += '<optgroup label="Project readiness items ('+(TEAM_LENS==='Estimation'?'Estimation':TEAM_LENS==='Contract'?'Contracts':'sheet')+')">' +
+      items.map(r=>'<option value="RD:'+esc(r.sheet)+'#'+esc(r.item_no)+'" data-site="'+esc(r.project)+'">'+esc(r.project)+' / '+esc(r.wing)+' — '+esc(r.scope_of_work).slice(0,70)+'</option>').join('') +
+      '</optgroup>';
+  }
+  const sel = document.getElementById('logTask');
+  sel.innerHTML = '<option value="">— none —</option>' + html;
+  // picking an item auto-selects its site
+  sel.onchange = ()=>{
+    const opt = sel.selectedOptions[0];
+    if(opt && opt.dataset.site){
+      const siteSel = document.getElementById('logSite');
+      [...siteSel.options].forEach(o=>{ if(ccNormalizeSite(o.value)===ccNormalizeSite(opt.dataset.site)) siteSel.value = o.value; });
+    }
+  };
 }
 
 async function submitActivity(){
@@ -1463,7 +1516,9 @@ function setupReadinessScopeUI(){
     const dlColName = TEAM_LENS==='Estimation' ? 'Planning Deadline' : TEAM_LENS==='Contract' ? 'Contract Deadline' : 'Start Date';
     document.querySelector('#readinessTable thead tr').innerHTML =
       '<th id="readinessDaysTh">'+lensDeadlineLabel()+'</th><th>Project</th><th>Wing</th><th>Category</th><th>Scope of Work</th>'+
-      '<th>'+dlColName+'</th><th>% Done</th><th>Status</th><th></th>';
+      '<th>'+dlColName+'</th><th>% Done</th>'+
+      (TEAM_LENS==='Contract' ? '<th>Estimation</th>' : '')+
+      '<th>Status</th><th></th>';
     // Pending / Completed sub-tabs
     const segTabs = document.getElementById('readinessSegTabs');
     segTabs.style.display = 'flex';
@@ -1477,7 +1532,7 @@ function setupReadinessScopeUI(){
     });
     if(TEAM_LENS==='Contract'){
       document.querySelector('#readinessSimpleView .hint').textContent =
-        'Contracts workflow: an item appears here only after the Estimation team has completed it (100%). Pending shows what needs your action; Completed holds what you\'ve finished — including updates still awaiting HOD approval.';
+        'Contracts workflow: the Estimation column shows each item\'s upstream status — items are locked \uD83D\uDD12 until Estimation completes them (100%). Pending shows your actionable work first; Completed holds what you\'ve finished, including updates still awaiting HOD approval.';
     } else if(TEAM_LENS==='Estimation'){
       document.querySelector('#readinessSimpleView .hint').textContent =
         'Estimation workflow: complete your checklist per item — the Contracts team can only start once your part hits 100%. Pending shows what needs your action; Completed holds what you\'ve finished, including updates still awaiting HOD approval.';
@@ -1537,10 +1592,9 @@ function renderReadinessTable(){
   if(!isUnrestrictedReadiness()){
     rows = rows.filter(r => (ME.sites||[]).some(s => ccNormalizeSite(s)===ccNormalizeSite(r.project)));
   }
-  // SEQUENTIAL GATING: Contracts can only see items Estimation has finished (100%)
-  if(memberLens && TEAM_LENS==='Contract'){
-    rows = rows.filter(r => r.estimation_marks===100);
-  }
+  // SEQUENTIAL WORKFLOW: Contracts see all items with an Estimation status
+  // column — but items Estimation hasn't finished are LOCKED (no Update button)
+  // and never count as actionable in Focus/Digest/KPIs.
   const fProject = document.getElementById('fReadinessProject').value;
   const fCategory = document.getElementById('fReadinessCategory').value;
   const fStatus = document.getElementById('fReadinessStatus').value;
@@ -1588,13 +1642,16 @@ function renderReadinessTable(){
     // manager simple view keeps the original at-risk default
     displayRows = fStatus ? rows.filter(r=>r._status===fStatus) : rows.filter(r=>r._status==='Slipping'||r._status==='Critical'||r._status==='Watch');
   }
-  displayRows = displayRows.slice().sort((a,b)=>(a._days??9999)-(b._days??9999)).slice(0,200);
+  const lockRank = r => (memberLens && TEAM_LENS==='Contract' && r.estimation_marks!==100) ? 1 : 0;
+  displayRows = displayRows.slice().sort((a,b)=> lockRank(a)-lockRank(b) || (a._days??9999)-(b._days??9999)).slice(0,200);
 
   document.getElementById('readinessBody').innerHTML = displayRows.map(r=>{
     const daysLabel = r._days===null?'—':(r._days<0?Math.abs(r._days)+'d overdue':r._days+'d');
     const rid = readinessRowId(r);
     if(memberLens){
       const marks = TEAM_LENS==='Estimation' ? r.estimation_marks : r.contract_marks;
+      const estDone = r.estimation_marks===100;
+      const locked = TEAM_LENS==='Contract' && !estDone;
       let statusCell;
       if(READINESS_SEG==='completed'){
         statusCell = myTeamMarks(r)===100
@@ -1603,7 +1660,13 @@ function renderReadinessTable(){
       } else {
         statusCell = pendingApprovalFor(r) ? '<span class="tag tag-wait">⏳ Update in approval</span>' : r._status;
       }
-      return '<tr><td class="mono">'+daysLabel+'</td><td>'+esc(r.project)+'</td><td>'+esc(r.wing)+'</td><td>'+esc(r.category||'—')+'</td><td>'+esc(r.scope_of_work)+'</td><td class="mono">'+lensDate(r)+'</td><td>'+Math.round(marks||0)+'%</td><td>'+statusCell+'</td><td><button class="ghost-btn" data-rid="'+rid+'" onclick="openReadinessEdit(this)">Update</button></td></tr>';
+      const estCell = TEAM_LENS==='Contract'
+        ? '<td>'+(estDone ? '<span class="tag tag-done">Complete</span>' : '<span class="tag tag-wait">Pending</span>')+'</td>'
+        : '';
+      const actionCell = locked
+        ? '<td><span class="hint" title="Estimation must complete this item before Contracts can start" style="white-space:nowrap;">🔒 Waiting on Est.</span></td>'
+        : '<td><button class="ghost-btn" data-rid="'+rid+'" onclick="openReadinessEdit(this)">Update</button></td>';
+      return '<tr'+(locked?' style="opacity:.62;"':'')+'><td class="mono">'+daysLabel+'</td><td>'+esc(r.project)+'</td><td>'+esc(r.wing)+'</td><td>'+esc(r.category||'—')+'</td><td>'+esc(r.scope_of_work)+'</td><td class="mono">'+lensDate(r)+'</td><td>'+Math.round(marks||0)+'%</td>'+estCell+'<td>'+statusCell+'</td>'+actionCell+'</tr>';
     }
     return '<tr><td class="mono">'+daysLabel+'</td><td>'+esc(r.project)+'</td><td>'+esc(r.wing)+'</td><td>'+esc(r.category||'—')+'</td><td>'+esc(r.scope_of_work)+'</td><td class="mono">'+lensDate(r)+'</td><td>'+Math.round(r.estimation_marks||0)+'%</td><td>'+Math.round(r.contract_marks||0)+'%</td><td>'+r._status+'</td><td><button class="ghost-btn" data-rid="'+rid+'" onclick="openReadinessEdit(this)">Update</button></td></tr>';
   }).join('') || '<tr><td colspan="10" style="text-align:center;color:#999;padding:16px;">'+
